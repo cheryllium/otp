@@ -218,10 +218,9 @@ server(StartSync) ->
 
     case get(no_control_g) of
 	true ->
-	    io:fwrite(<<"Eshell V~s\n">>, [erlang:system_info(version)]);
+	    io:fwrite(<<"Psychobitch V0.0.0.1 \"stabmyboyfriend\"\n">>, []);
 	_undefined_or_false ->
-	    io:fwrite(<<"Eshell V~s  (abort with ^G)\n">>,
-		      [erlang:system_info(version)])
+	    io:fwrite(<<"Pyschobitch V0.0.0.1  \"stabmyboyfriend\"\n">>, [])
     end,
     erase(no_control_g),
 

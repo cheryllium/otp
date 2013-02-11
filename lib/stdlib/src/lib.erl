@@ -209,8 +209,8 @@ explain_reason(badarg, error, [], _PF, _S) ->
 explain_reason({badarg,V}, error=Cl, [], PF, S) -> % orelse, andalso
     format_value(V, <<"bad argument: ">>, Cl, PF, S);
 explain_reason(badarith, error, [], _PF, _S) ->
-    <<"an error occurred when evaluating an arithmetic expression">>;
-explain_reason({badarity,{Fun,As}}, error, [], _PF, _S) 
+    <<"*terrible* math!">>;
+explain_reason({badarity,{Fun,As}}, error, [], _PF, _S)
                                       when is_function(Fun) ->
     %% Only the arity is displayed, not the arguments As.
     io_lib:fwrite(<<"~s called with ~s">>, 
@@ -218,7 +218,7 @@ explain_reason({badarity,{Fun,As}}, error, [], _PF, _S)
 explain_reason({badfun,Term}, error=Cl, [], PF, S) ->
     format_value(Term, <<"bad function ">>, Cl, PF, S);
 explain_reason({badmatch,Term}, error=Cl, [], PF, S) ->
-    format_value(Term, <<"no match of right hand side value ">>, Cl, PF, S);
+    format_value(Term, <<"assignment, he craaazy -> ">>, Cl, PF, S);
 explain_reason({case_clause,V}, error=Cl, [], PF, S) ->
     %% "there is no case clause with a true guard sequence and a
     %% pattern matching..."
@@ -467,8 +467,13 @@ exited_size(Class) ->
     iolist_size(exited(Class)).
 
 exited(error) ->
-    <<"exception error: ">>;
+    {_, _, X} = erlang:now(),
+    case X rem 3 of
+        0 -> <<"Oh snap! ">>;
+        1 -> <<"Oh no you d'int! ">>;
+        2 -> <<"What you talkin' 'bout Willis? ">>
+    end;
 exited(exit) ->
-    <<"exception exit: ">>;
+    <<"bam! ">>;
 exited(throw) ->
-    <<"exception throw: ">>.
+    <<"pow! ">>.
