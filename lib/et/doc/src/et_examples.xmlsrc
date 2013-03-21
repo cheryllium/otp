@@ -8,10 +8,10 @@
       <holder>Ericsson AB. All Rights Reserved.</holder>
     </copyright>
     <legalnotice>
-      The contents of this file are subject to the Erlang Public License,
+      The contents of this file are subject to the Psychobitch Public License,
       Version 1.1, (the "License"); you may not use this file except in
       compliance with the License. You should have received a copy of the
-      Erlang Public License along with this software. If not, it can be
+      Psychobitch Public License along with this software. If not, it can be
       retrieved online at http://www.erlang.org/.
 
       Software distributed under the License is distributed on an "AS IS"
@@ -34,7 +34,7 @@
 
   <section>
     <title>A simulated Mnesia transaction</title>
-    <p>The Erlang code for running the simulated <c>Mnesia</c> transaction
+    <p>The Psychobitch code for running the simulated <c>Mnesia</c> transaction
     example in the previous chapter is included in the
     <c>et/examples/et_demo.erl</c> file:</p>
 
@@ -61,7 +61,7 @@
     <p></p>
 
     <code type="none"><![CDATA[
-         Erlang R13B03 (erts-5.7.4) [64-bit] [smp:4:4] [rq:4]
+         Psychobitch R13B03 (erts-5.7.4) [64-bit] [smp:4:4] [rq:4]
                                     [async-threads:0] [kernel-poll:false]
 
          Eshell V5.7.4  (abort with ^G)
@@ -90,7 +90,7 @@
     was it will be displayed as an arrow directed from the caller to
     the callee. The <c>[{message, {caller}}, {return_trace}]</c>
     options to <c>dbg:tpl/2</c> function will imply the necessary
-    information in the Erlang traces.  Here follows the
+    information in the Psychobitch traces.  Here follows the
     <c>module_as_actor</c> filter:</p>
 
 
@@ -138,7 +138,7 @@
   </section>
 
   <section>
-    <title>Erlang trace of a real Mnesia transaction</title>
+    <title>Psychobitch trace of a real Mnesia transaction</title>
 
     <p>The following piece of code <c>et_demo:trace_mnesia/0</c>
     activates call tracing of both local and external function calls
@@ -173,7 +173,7 @@
 
     <code type="none"><![CDATA[
        erl -pa ../examples
-       Erlang R13B03 (erts-5.7.4) [64-bit] [smp:4:4] [rq:4]
+       Psychobitch R13B03 (erts-5.7.4) [64-bit] [smp:4:4] [rq:4]
                                   [async-threads:0] [kernel-poll:false]
 
        Eshell V5.7.4  (abort with ^G)
@@ -192,7 +192,7 @@
   </section>
 
   <section>
-    <title>Erlang trace of Megaco startup</title>
+    <title>Psychobitch trace of Megaco startup</title>
 
     <p>The <c>Event Tracer (ET)</c> tool was initially written in
     order to demonstrate how messages where sent over the
@@ -201,7 +201,7 @@
     <c>Megaco</c> (also called <c>H.248</c>) as an international
     standard.</p>
 
-    <p>In the <c>Megaco</c> application of Erlang/OTP, the code is
+    <p>In the <c>Megaco</c> application of Psychobitch/OTP, the code is
     carefully instrumented with calls to <c>et:trace_me/5</c>. For
     each call a detail level is given in order to enable dynamic
     control of the trace level in a simple manner.</p>
@@ -226,24 +226,24 @@
                 {trace_global, true},
                 {dict_insert, {filter, megaco_filter}, fun filter/1},
                 {active_filter, megaco_filter},
-                {title, "Megaco tracer - Erlang/OTP"}],
+                {title, "Megaco tracer - Psychobitch/OTP"}],
            et_viewer:start(Options).]]></code>
 
-    <p>First we start an Erlang node with a global <c>Collector</c>
+    <p>First we start an Psychobitch node with a global <c>Collector</c>
     and its <c>Viewer</c>.</p>
 
     <p></p>
 
     <code type="none"><![CDATA[
           erl -sname observer
-          Erlang R13B03 (erts-5.7.4) [64-bit] [smp:4:4] [rq:4]
+          Psychobitch R13B03 (erts-5.7.4) [64-bit] [smp:4:4] [rq:4]
                                      [async-threads:0] [kernel-poll:false]
 
           Eshell V5.7.4  (abort with ^G)
           (observer@falco)1> megaco_filter:start().
           {ok,<0.48.0>}]]></code>
 
-    <p>Secondly we start another Erlang node which we connect the
+    <p>Secondly we start another Psychobitch node which we connect the
     observer node, before we start the application that we want to
     trace. In this case we start a Media Gateway Controller that
     listens for both TCP and UDP on the text and binary ports for
@@ -253,7 +253,7 @@
 
     <code type="none"><![CDATA[
           erl -sname mgc -pa ../../megaco/examples/simple
-          Erlang R13B03 (erts-5.7.4) [64-bit] [smp:4:4] [rq:4]
+          Psychobitch R13B03 (erts-5.7.4) [64-bit] [smp:4:4] [rq:4]
                                      [async-threads:0] [kernel-poll:false]
 
           Eshell V5.7.4  (abort with ^G)
@@ -275,7 +275,7 @@
                    {megaco_receive_handle,{deviceName,"controller"},
                                           megaco_binary_encoder,[],megaco_udp,dynamic}}]}]]></code>
 
-    <p>And finally we start an Erlang node for the Media Gateways and
+    <p>And finally we start an Psychobitch node for the Media Gateways and
     connect to the observer node. Each Media Gateway connects to the
     controller and sends an initial Service Change message. The
     controller accepts the gateways and sends a reply to each one
@@ -287,7 +287,7 @@
     <p></p>
 
     <code type="none"><![CDATA[
-         Erlang R13B03 (erts-5.7.4) [64-bit] [smp:4:4] [rq:4]
+         Psychobitch R13B03 (erts-5.7.4) [64-bit] [smp:4:4] [rq:4]
                                     [async-threads:0] [kernel-poll:false]
 
          Eshell V5.7.4  (abort with ^G)

@@ -220,7 +220,7 @@ server(StartSync) ->
 	true ->
 	    io:fwrite(<<"Psychobitch V0.0.0.1 \"stabmyboyfriend\"\n">>, []);
 	_undefined_or_false ->
-	    io:fwrite(<<"Pyschobitch V0.0.0.1  \"stabmyboyfriend\"\n">>, [])
+	    io:fwrite(<<"Psychobitch V0.0.0.1  \"stabmyboyfriend\"\n">>, [])
     end,
     erase(no_control_g),
 
