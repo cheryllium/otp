@@ -1,18 +1,19 @@
 %%
 %% %CopyrightBegin%
 %%
-%% Copyright Ericsson AB 1996-2011. All Rights Reserved.
+%% Copyright Ericsson AB 1996-2018. All Rights Reserved.
 %%
-%% The contents of this file are subject to the Erlang Public License,
-%% Version 1.1, (the "License"); you may not use this file except in
-%% compliance with the License. You should have received a copy of the
-%% Erlang Public License along with this software. If not, it can be
-%% retrieved online at http://www.erlang.org/.
+%% Licensed under the Apache License, Version 2.0 (the "License");
+%% you may not use this file except in compliance with the License.
+%% You may obtain a copy of the License at
 %%
-%% Software distributed under the License is distributed on an "AS IS"
-%% basis, WITHOUT WARRANTY OF ANY KIND, either express or implied. See
-%% the License for the specific language governing rights and limitations
-%% under the License.
+%%     http://www.apache.org/licenses/LICENSE-2.0
+%%
+%% Unless required by applicable law or agreed to in writing, software
+%% distributed under the License is distributed on an "AS IS" BASIS,
+%% WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+%% See the License for the specific language governing permissions and
+%% limitations under the License.
 %%
 %% %CopyrightEnd%
 %%
@@ -25,15 +26,13 @@
 
 %%-define(dist_debug, true).
 
-%-define(DBG,erlang:display([?MODULE,?LINE])).
-
 -ifdef(dist_debug).
 -define(debug(Term), erlang:display(Term)).
 -else.
 -define(debug(Term), ok).
 -endif.
 
--ifdef(DEBUG).
+-ifdef(dist_debug).
 -define(connect_failure(Node,Term),
 	io:format("Net Kernel 2: Failed connection to node ~p, reason ~p~n",
 		  [Node,Term])).
@@ -52,18 +51,27 @@
 -define(tckr_dbg(X), ok).
 -endif.
 
-%% User Interface Exports
--export([start/1, start_link/1, stop/0,
-	 kernel_apply/3,
+%% Documented API functions.
+
+-export([allow/1, allowed/0,
+	 connect_node/1,
 	 monitor_nodes/1,
 	 monitor_nodes/2,
+	 setopts/2,
+	 getopts/2,
+	 start/1,
+	 stop/0]).
+
+%% Exports for internal use.
+
+-export([start_link/2,
+	 kernel_apply/3,
 	 longnames/0,
-	 allow/1,
 	 protocol_childspecs/0,
 	 epmd_module/0]).
 
--export([connect/1, disconnect/1, hidden_connect/1, passive_cnct/1]).
--export([connect_node/1, hidden_connect_node/1]). %% explicit connect
+-export([disconnect/1, passive_cnct/1]).
+-export([hidden_connect_node/1]).
 -export([set_net_ticktime/1, set_net_ticktime/2, get_net_ticktime/0]).
 
 -export([node_info/1, node_info/2, nodes_info/0,
@@ -72,7 +80,8 @@
 
 -export([publish_on_node/1, update_publish_nodes/1]).
 
-%% Internal Exports
+%% Internal exports for spawning processes.
+
 -export([do_spawn/3,
 	 spawn_func/6,
 	 ticker/2,
@@ -102,7 +111,7 @@
 	 }).
 
 -record(listen, {
-		 listen,     %% listen pid
+		 listen,     %% listen socket
 		 accept,     %% accepting pid
 		 address,    %% #net_address
 		 module      %% proto module
@@ -113,6 +122,7 @@
 
 -record(connection, {
 		     node,          %% remote node name
+                     conn_id,       %% Connection identity
 		     state,         %% pending | up | up_pending
 		     owner,         %% owner pid
 	             pending_owner, %% possible new owner
@@ -124,7 +134,6 @@
 -record(barred_connection, {
 	  node %% remote node name
 	 }).
-
 
 -record(tick, {ticker,        %% ticker                     : pid()
 	       time           %% Ticktime in milli seconds  : integer()
@@ -142,6 +151,17 @@
 
 -include("net_address.hrl").
 
+%%% BIF
+
+-export([dflag_unicode_io/1]).
+
+-spec dflag_unicode_io(pid()) -> boolean().
+
+dflag_unicode_io(_) ->
+    erlang:nif_error(undef).
+
+%%% End of BIF
+
 %% Interface functions
 
 kernel_apply(M,F,A) ->         request({apply,M,F,A}).
@@ -149,6 +169,8 @@ kernel_apply(M,F,A) ->         request({apply,M,F,A}).
 -spec allow(Nodes) -> ok | error when
       Nodes :: [node()].
 allow(Nodes) ->                request({allow, Nodes}).
+
+allowed() ->                   request(allowed).
 
 longnames() ->                 request(longnames).
 
@@ -190,7 +212,6 @@ set_net_ticktime(T) when is_integer(T) ->
 get_net_ticktime() ->
     ticktime_res(request(ticktime)).
 
-
 %% The monitor_nodes() feature has been moved into the emulator.
 %% The feature is reached via (intentionally) undocumented process
 %% flags (we may want to move it elsewhere later). In order to easily
@@ -201,8 +222,7 @@ get_net_ticktime() ->
       Error :: error | {error, term()}.
 monitor_nodes(Flag) ->
     case catch process_flag(monitor_nodes, Flag) of
-	true -> ok;
-	false -> ok;
+	N when is_integer(N) -> ok;
 	_ -> mk_monitor_nodes_error(Flag, [])
     end.
 
@@ -215,8 +235,7 @@ monitor_nodes(Flag) ->
       Error :: error | {error, term()}.
 monitor_nodes(Flag, Opts) ->
     case catch process_flag({monitor_nodes, Opts}, Flag) of
-	true -> ok;
-	false -> ok;
+	N when is_integer(N) -> ok;
 	_ -> mk_monitor_nodes_error(Flag, Opts)
     end.
 
@@ -227,14 +246,15 @@ ticktime_res(A)      when is_atom(A)             -> A.
 
 %% Called though BIF's
 
-connect(Node) ->               do_connect(Node, normal, false).
 %%% Long timeout if blocked (== barred), only affects nodes with
 %%% {dist_auto_connect, once} set.
-passive_cnct(Node) ->              do_connect(Node, normal, true).
-disconnect(Node) ->            request({disconnect, Node}).
+passive_cnct(Node) ->
+    case request({passive_cnct, Node}) of
+        ignored -> false;
+        Other -> Other
+    end.
 
-%% connect but not seen
-hidden_connect(Node) ->        do_connect(Node, hidden, false).
+disconnect(Node) ->            request({disconnect, Node}).
 
 %% Should this node publish itself on Node?
 publish_on_node(Node) when is_atom(Node) ->
@@ -252,67 +272,22 @@ connect_node(Node) when is_atom(Node) ->
 hidden_connect_node(Node) when is_atom(Node) ->
     request({connect, hidden, Node}).
 
-do_connect(Node, Type, WaitForBarred) -> %% Type = normal | hidden
-    case catch ets:lookup(sys_dist, Node) of
-	{'EXIT', _} ->
-	    ?connect_failure(Node,{table_missing, sys_dist}),
-	    false;
-	[#barred_connection{}] ->
-	    case WaitForBarred of
-		false ->
-		    false;
-		true ->
-		    Pid = spawn(?MODULE,passive_connect_monitor,[self(),Node]),
-		    receive
-			{Pid, true} ->
-			    %%io:format("Net Kernel: barred connection (~p) "
-			    %%          "connected from other end.~n",[Node]),
-			    true;
-			{Pid, false} ->
-			    ?connect_failure(Node,{barred_connection,
-						   ets:lookup(sys_dist, Node)}),
-			    %%io:format("Net Kernel: barred connection (~p) "
-			    %%      "- failure.~n",[Node]),
-			    false
-		    end
-	    end;
-	Else ->
-	    case application:get_env(kernel, dist_auto_connect) of
-		{ok, never} ->
-		    ?connect_failure(Node,{dist_auto_connect,never}),
-		    false;
-		% This might happen due to connection close
-		% not beeing propagated to user space yet.
-		% Save the day by just not connecting...
-		{ok, once} when Else =/= [],
-				(hd(Else))#connection.state =:= up ->
-		    ?connect_failure(Node,{barred_connection,
-				ets:lookup(sys_dist, Node)}),
-		    false;
-		_ ->
-		    request({connect, Type, Node})
-	    end
-    end.
-
-passive_connect_monitor(Parent, Node) ->
-    monitor_nodes(true,[{node_type,all}]),
-    case lists:member(Node,nodes([connected])) of
-	true ->
-	    monitor_nodes(false,[{node_type,all}]),
-	    Parent ! {self(),true};
-	_ ->
-	    Ref = make_ref(),
-	    Tref = erlang:send_after(connecttime(),self(),Ref),
-	    receive
-		Ref ->
-		    monitor_nodes(false,[{node_type,all}]),
-		    Parent ! {self(), false};
-		{nodeup,Node,_} ->
-		    monitor_nodes(false,[{node_type,all}]),
-		    erlang:cancel_timer(Tref),
-		    Parent ! {self(),true}
-	    end
-    end.
+passive_connect_monitor(From, Node) ->
+    ok = monitor_nodes(true,[{node_type,all}]),
+    Reply = case lists:member(Node,nodes([connected])) of
+                true ->
+                    true;
+                _ ->
+                    receive
+                        {nodeup,Node,_} ->
+                            true
+                    after connecttime() ->
+                            false
+                    end
+            end,
+    ok = monitor_nodes(false,[{node_type,all}]),
+    {Pid, Tag} = From,
+    erlang:send(Pid, {Tag, Reply}).
 
 %% If the net_kernel isn't running we ignore all requests to the
 %% kernel, thus basically accepting them :-)
@@ -329,18 +304,18 @@ request(Req) ->
 start(Args) ->
     erl_distribution:start(Args).
 
-%% This is the main startup routine for net_kernel
-%% The defaults are longnames and a ticktime of 15 secs to the tcp_drv.
+%% This is the main startup routine for net_kernel (only for internal
+%% use by the Kernel application.
 
-start_link([Name]) ->
-    start_link([Name, longnames]);
+start_link([Name], CleanHalt) ->
+    start_link([Name, longnames], CleanHalt);
+start_link([Name, LongOrShortNames], CleanHalt) ->
+    start_link([Name, LongOrShortNames, 15000], CleanHalt);
 
-start_link([Name, LongOrShortNames]) ->
-    start_link([Name, LongOrShortNames, 15000]);
-
-start_link([Name, LongOrShortNames, Ticktime]) ->
-    case gen_server:start_link({local, net_kernel}, net_kernel,
-			       {Name, LongOrShortNames, Ticktime}, []) of
+start_link([Name, LongOrShortNames, Ticktime], CleanHalt) ->
+    Args = {Name, LongOrShortNames, Ticktime, CleanHalt},
+    case gen_server:start_link({local, net_kernel}, ?MODULE,
+			       Args, []) of
 	{ok, Pid} ->
 	    {ok, Pid};
 	{error, {already_started, Pid}} ->
@@ -349,12 +324,9 @@ start_link([Name, LongOrShortNames, Ticktime]) ->
 	    exit(nodistribution)
     end.
 
-%% auth:get_cookie should only be able to return an atom
-%% tuple cookies are unknowns
-
-init({Name, LongOrShortNames, TickT}) ->
+init({Name, LongOrShortNames, TickT, CleanHalt}) ->
     process_flag(trap_exit,true),
-    case init_node(Name, LongOrShortNames) of
+    case init_node(Name, LongOrShortNames, CleanHalt) of
 	{ok, Node, Listeners} ->
 	    process_flag(priority, max),
 	    Ticktime = to_integer(TickT),
@@ -367,7 +339,7 @@ init({Name, LongOrShortNames, TickT}) ->
 			connections =
 			ets:new(sys_dist,[named_table,
 					  protected,
-					  {keypos, 2}]),
+					  {keypos, #connection.node}]),
 			listen = Listeners,
 			allowed = [],
 			verbose = 0
@@ -376,41 +348,136 @@ init({Name, LongOrShortNames, TickT}) ->
 	    {stop, Error}
     end.
 
+do_auto_connect_1(Node, ConnId, From, State) ->
+    case ets:lookup(sys_dist, Node) of
+        [#barred_connection{}] ->
+            case ConnId of
+                passive_cnct ->
+                    spawn(?MODULE,passive_connect_monitor,[From,Node]),
+                    {noreply, State};
+                _ ->
+                    erts_internal:abort_connection(Node, ConnId),
+                    {reply, false, State}
+            end;
+
+        ConnLookup ->
+            do_auto_connect_2(Node, ConnId, From, State, ConnLookup)
+    end.
+
+do_auto_connect_2(Node, passive_cnct, From, State, ConnLookup) ->
+    try erts_internal:new_connection(Node) of
+        ConnId ->
+            do_auto_connect_2(Node, ConnId, From, State, ConnLookup)
+    catch
+        _:_ ->
+            error_logger:error_msg("~n** Cannot get connection id for node ~w~n",
+                                   [Node]),
+            {reply, false, State}
+    end;
+do_auto_connect_2(Node, ConnId, From, State, ConnLookup) ->
+    case ConnLookup of
+        [#connection{conn_id=ConnId, state = up}] ->
+            {reply, true, State};
+        [#connection{conn_id=ConnId, waiting=Waiting}=Conn] ->
+            case From of
+                noreply -> ok;
+                _ -> ets:insert(sys_dist, Conn#connection{waiting = [From|Waiting]})
+            end,
+            {noreply, State};
+
+        _ ->
+            case application:get_env(kernel, dist_auto_connect) of
+                {ok, never} ->
+                    ?connect_failure(Node,{dist_auto_connect,never}),
+                    erts_internal:abort_connection(Node, ConnId),
+                    {reply, false, State};
+
+                %% This might happen due to connection close
+                %% not beeing propagated to user space yet.
+                %% Save the day by just not connecting...
+                {ok, once} when ConnLookup =/= [],
+                                (hd(ConnLookup))#connection.state =:= up ->
+                    ?connect_failure(Node,{barred_connection,
+                                           ets:lookup(sys_dist, Node)}),
+                    erts_internal:abort_connection(Node, ConnId),
+                    {reply, false, State};
+                _ ->
+                    case setup(Node, ConnId, normal, From, State) of
+                        {ok, SetupPid} ->
+                            Owners = [{SetupPid, Node} | State#state.conn_owners],
+                            {noreply,State#state{conn_owners=Owners}};
+                        _Error  ->
+                            ?connect_failure(Node, {setup_call, failed, _Error}),
+                            erts_internal:abort_connection(Node, ConnId),
+                            {reply, false, State}
+                    end
+            end
+    end.
+
+do_explicit_connect([#connection{conn_id = ConnId, state = up}], _, _, ConnId, _From, State) ->
+    {reply, true, State};
+do_explicit_connect([#connection{conn_id = ConnId}=Conn], _, _, ConnId, From, State)
+  when Conn#connection.state =:= pending;
+       Conn#connection.state =:= up_pending ->
+    Waiting = Conn#connection.waiting,
+    ets:insert(sys_dist, Conn#connection{waiting = [From|Waiting]}),
+    {noreply, State};
+do_explicit_connect([#barred_connection{}], Type, Node, ConnId, From , State) ->
+    %% Barred connection only affects auto_connect, ignore it.
+    do_explicit_connect([], Type, Node, ConnId, From , State);
+do_explicit_connect(_ConnLookup, Type, Node, ConnId, From , State) ->
+    case setup(Node,ConnId,Type,From,State) of
+        {ok, SetupPid} ->
+            Owners = [{SetupPid, Node} | State#state.conn_owners],
+            {noreply,State#state{conn_owners=Owners}};
+        _Error ->
+            ?connect_failure(Node, {setup_call, failed, _Error}),
+            {reply, false, State}
+    end.
 
 %% ------------------------------------------------------------
 %% handle_call.
 %% ------------------------------------------------------------
 
 %%
-%% Set up a connection to Node.
-%% The response is delayed until the connection is up and
-%% running.
+%% Passive auto-connect to Node.
+%% The response is delayed until the connection is up and running.
+%%
+handle_call({passive_cnct, Node}, From, State) when Node =:= node() ->
+    async_reply({reply, true, State}, From);
+handle_call({passive_cnct, Node}, From, State) ->
+    verbose({passive_cnct, Node}, 1, State),
+    R = do_auto_connect_1(Node, passive_cnct, From, State),
+    return_call(R, From);
+
+%%
+%% Explicit connect
+%% The response is delayed until the connection is up and running.
 %%
 handle_call({connect, _, Node}, From, State) when Node =:= node() ->
     async_reply({reply, true, State}, From);
 handle_call({connect, Type, Node}, From, State) ->
     verbose({connect, Type, Node}, 1, State),
-    case ets:lookup(sys_dist, Node) of
-	[Conn] when Conn#connection.state =:= up ->
-	    async_reply({reply, true, State}, From);
-	[Conn] when Conn#connection.state =:= pending ->
-	    Waiting = Conn#connection.waiting,
-	    ets:insert(sys_dist, Conn#connection{waiting = [From|Waiting]}),
-	    {noreply, State};
-	[Conn] when Conn#connection.state =:= up_pending ->
-	    Waiting = Conn#connection.waiting,
-	    ets:insert(sys_dist, Conn#connection{waiting = [From|Waiting]}),
-	    {noreply, State};
-	_ ->
-	    case setup(Node,Type,From,State) of
-		{ok, SetupPid} ->
-		    Owners = [{SetupPid, Node} | State#state.conn_owners],
-		    {noreply,State#state{conn_owners=Owners}};
-		_  ->
-		    ?connect_failure(Node, {setup_call, failed}),
-		    async_reply({reply, false, State}, From)
-	    end
-    end;
+    ConnLookup = ets:lookup(sys_dist, Node),
+    R = try erts_internal:new_connection(Node) of
+            ConnId ->
+                R1 = do_explicit_connect(ConnLookup, Type, Node, ConnId, From, State),
+                case R1 of
+                    {reply, true, _S} -> %% already connected
+                        ok;
+                    {noreply, _S} -> %% connection pending
+                        ok;
+                    {reply, false, _S} -> %% connection refused
+                        erts_internal:abort_connection(Node, ConnId)
+                end,
+                R1
+        catch
+            _:_ ->
+                error_logger:error_msg("~n** Cannot get connection id for node ~w~n",
+                                       [Node]),
+                {reply, false, State}
+        end,
+    return_call(R, From);
 
 %%
 %% Close the connection to Node.
@@ -453,6 +520,9 @@ handle_call({allow, Nodes}, From, State) ->
 	    async_reply({reply,error,State}, From)
     end;
 
+handle_call(allowed, From, #state{allowed = Allowed} = State) ->
+    async_reply({reply,{ok,Allowed},State}, From);
+
 %%
 %% authentication, used by auth. Simply works as this:
 %% if the message comes through, the other node IS authorized.
@@ -491,7 +561,6 @@ handle_call({publish_on_node, Node}, From, State) ->
 		      lists:member(Node, Nodes)
 	      end,
     async_reply({reply, Publish, NewState}, From);
-
 
 handle_call({verbose, Level}, From, State) ->
     async_reply({reply, State#state.verbose, State#state{verbose = Level}},
@@ -537,6 +606,38 @@ handle_call({new_ticktime,_T,_TP},
 	    #state{tick = #tick_change{time = T}} = State) ->
     async_reply({reply, {ongoing_change_to, T}, State}, From);
 
+handle_call({setopts, new, Opts}, From, State) ->
+    Ret = setopts_new(Opts, State),
+    async_reply({reply, Ret, State}, From);
+
+handle_call({setopts, Node, Opts}, From, State) ->
+    Return =
+	case ets:lookup(sys_dist, Node) of
+	    [Conn] when Conn#connection.state =:= up ->
+		case call_owner(Conn#connection.owner, {setopts, Opts}) of
+		    {ok, Ret} -> Ret;
+		    _ -> {error, noconnection}
+		end;
+
+	    _ ->
+		{error, noconnection}
+    end,
+    async_reply({reply, Return, State}, From);
+
+handle_call({getopts, Node, Opts}, From, State) ->
+    Return =
+	case ets:lookup(sys_dist, Node) of
+	    [Conn] when Conn#connection.state =:= up ->
+		case call_owner(Conn#connection.owner, {getopts, Opts}) of
+		    {ok, Ret} -> Ret;
+		    _ -> {error, noconnection}
+		end;
+
+	    _ ->
+		{error, noconnection}
+    end,
+    async_reply({reply, Return, State}, From);
+
 handle_call(_Msg, _From, State) ->
     {noreply, State}.
 
@@ -560,29 +661,39 @@ code_change(_OldVsn, State, _Extra) ->
 
 terminate(no_network, State) ->
     lists:foreach(
-      fun({Node, Type}) ->
-	      case Type of
-		  normal -> ?nodedown(Node, State);
-		  _ -> ok
-	      end
-      end, get_up_nodes() ++ [{node(), normal}]);
+      fun(Node) -> ?nodedown(Node, State)
+      end, get_nodes_up_normal() ++ [node()]);
 terminate(_Reason, State) ->
     lists:foreach(
       fun(#listen {listen = Listen,module = Mod}) ->
 	      Mod:close(Listen)
       end, State#state.listen),
     lists:foreach(
-      fun({Node, Type}) ->
-	      case Type of
-		  normal -> ?nodedown(Node, State);
-		  _ -> ok
-	      end
-      end, get_up_nodes() ++ [{node(), normal}]).
-
+      fun(Node) -> ?nodedown(Node, State)
+      end, get_nodes_up_normal() ++ [node()]).
 
 %% ------------------------------------------------------------
 %% handle_info.
 %% ------------------------------------------------------------
+
+%%
+%% Asynchronous auto connect request
+%%
+handle_info({auto_connect,Node, DHandle}, State) ->
+    verbose({auto_connect, Node, DHandle}, 1, State),
+    ConnId = DHandle,
+    NewState =
+        case do_auto_connect_1(Node, ConnId, noreply, State) of
+            {noreply, S} ->           %% Pending connection
+                S;
+
+            {reply, true, S} ->  %% Already connected
+                S;
+
+            {reply, false, S} -> %% Connection refused
+                S
+        end,
+    {noreply, NewState};
 
 %%
 %% accept a new connection.
@@ -664,21 +775,30 @@ handle_info({AcceptPid, {accept_pending,MyNode,Node,Address,Type}}, State) ->
 	    AcceptPid ! {self(), {accept_pending, already_pending}},
 	    {noreply, State};
 	_ ->
-	    ets:insert(sys_dist, #connection{node = Node,
-					     state = pending,
-					     owner = AcceptPid,
-					     address = Address,
-					     type = Type}),
-	    AcceptPid ! {self(),{accept_pending,ok}},
-	    Owners = [{AcceptPid,Node} | State#state.conn_owners],
-	    {noreply, State#state{conn_owners = Owners}}
+            try erts_internal:new_connection(Node) of
+                ConnId ->
+                    ets:insert(sys_dist, #connection{node = Node,
+                                                     conn_id = ConnId,
+                                                     state = pending,
+                                                     owner = AcceptPid,
+                                                     address = Address,
+                                                     type = Type}),
+                    AcceptPid ! {self(),{accept_pending,ok}},
+                    Owners = [{AcceptPid,Node} | State#state.conn_owners],
+                    {noreply, State#state{conn_owners = Owners}}
+            catch
+                _:_ ->
+                    error_logger:error_msg("~n** Cannot get connection id for node ~w~n",
+                                           [Node]),
+                    AcceptPid ! {self(),{accept_pending,nok_pending}},
+                    {noreply, State}
+            end
     end;
 
 handle_info({SetupPid, {is_pending, Node}}, State) ->
     Reply = lists:member({SetupPid,Node},State#state.conn_owners),
     SetupPid ! {self(), {is_pending, Reply}},
     {noreply, State};
-
 
 %%
 %% Handle different types of process terminations.
@@ -723,13 +843,13 @@ handle_info(transition_period_end,
 				       how = How}} = State) ->
     ?tckr_dbg(transition_period_ended),
     case How of
-	shorter -> Tckr ! {new_ticktime, T};
+	shorter -> Tckr ! {new_ticktime, T}, done;
 	_       -> done
     end,
     {noreply,State#state{tick = #tick{ticker = Tckr, time = T}}};
 
 handle_info(X, State) ->
-    error_msg("Net kernel got ~w~n",[X]),
+    error_msg("Net kernel got ~tw~n",[X]),
     {noreply,State}.
 
 %% -----------------------------------------------------------
@@ -857,6 +977,7 @@ pending_nodedown(Conn, Node, Type, State) ->
     % Don't bar connections that have never been alive
     %mark_sys_dist_nodedown(Node),
     % - instead just delete the node:
+    erts_internal:abort_connection(Node, Conn#connection.conn_id),
     ets:delete(sys_dist, Node),
     reply_waiting(Node,Conn#connection.waiting, false),
     case Type of
@@ -871,23 +992,25 @@ up_pending_nodedown(Conn, Node, _Reason, _Type, State) ->
     AcceptPid = Conn#connection.pending_owner,
     Owners = State#state.conn_owners,
     Pend = lists:keydelete(AcceptPid, 1, State#state.pend_owners),
+    erts_internal:abort_connection(Node, Conn#connection.conn_id),
     Conn1 = Conn#connection { owner = AcceptPid,
+                              conn_id = erts_internal:new_connection(Node),
 			      pending_owner = undefined,
 			      state = pending },
     ets:insert(sys_dist, Conn1),
     AcceptPid ! {self(), pending},
     State#state{conn_owners = [{AcceptPid,Node}|Owners], pend_owners = Pend}.
 
-
-up_nodedown(_Conn, Node, _Reason, Type, State) ->
-    mark_sys_dist_nodedown(Node),
+up_nodedown(Conn, Node, _Reason, Type, State) ->
+    mark_sys_dist_nodedown(Conn, Node),
     case Type of
 	normal -> ?nodedown(Node, State);
 	_ -> ok
     end,
     State.
 
-mark_sys_dist_nodedown(Node) ->
+mark_sys_dist_nodedown(Conn, Node) ->
+    erts_internal:abort_connection(Node, Conn#connection.conn_id),
     case application:get_env(kernel, dist_auto_connect) of
 	{ok, once} ->
 	    ets:insert(sys_dist, #barred_connection{node = Node});
@@ -898,7 +1021,6 @@ mark_sys_dist_nodedown(Node) ->
 %% -----------------------------------------------------------
 %% End handle_exit/2 !!
 %% -----------------------------------------------------------
-
 
 %% -----------------------------------------------------------
 %% monitor_nodes/[1,2] errors
@@ -983,48 +1105,31 @@ do_disconnect(Node, State) ->
 	    {false, State}
     end.
 
-
 disconnect_pid(Pid, State) ->
     exit(Pid, disconnect),
+
+    %% This code used to only use exit + recv 'EXIT' to sync,
+    %% but since OTP-22 links are no longer broken atomically
+    %% so the exit message below can arrive before any remaining
+    %% exit messages have killed the distribution port
+    Ref = erlang:monitor(process, Pid),
     %% Sync wait for connection to die!!!
     receive
-	{'EXIT',Pid,Reason} ->
-	    {_,State1} = handle_exit(Pid, Reason, State),
-	    {true, State1}
+        {'DOWN',Ref,_,_,_} ->
+            receive
+                {'EXIT',Pid,Reason} ->
+                    {_,State1} = handle_exit(Pid, Reason, State),
+                    {true, State1}
+            end
     end.
 
 %%
 %%
 %%
-get_nodes(Which) ->
-    get_nodes(ets:first(sys_dist), Which).
 
-get_nodes('$end_of_table', _) ->
-    [];
-get_nodes(Key, Which) ->
-    case ets:lookup(sys_dist, Key) of
-	[Conn = #connection{state = up}] ->
-	    [Conn#connection.node | get_nodes(ets:next(sys_dist, Key),
-					      Which)];
-	[Conn = #connection{}] when Which =:= all ->
-	    [Conn#connection.node | get_nodes(ets:next(sys_dist, Key),
-					      Which)];
-	_ ->
-	    get_nodes(ets:next(sys_dist, Key), Which)
-    end.
-
-%% Return a list of all nodes that are 'up'.
-get_up_nodes() ->
-    get_up_nodes(ets:first(sys_dist)).
-
-get_up_nodes('$end_of_table') -> [];
-get_up_nodes(Key) ->
-    case ets:lookup(sys_dist, Key) of
- 	[#connection{state=up,node=Node,type=Type}] ->
- 	    [{Node,Type}|get_up_nodes(ets:next(sys_dist, Key))];
- 	_ ->
- 	    get_up_nodes(ets:next(sys_dist, Key))
-    end.
+%% Return a list of all nodes that are 'up' and not hidden.
+get_nodes_up_normal() ->
+    ets:select(sys_dist, [{#connection{node = '$1', state = up, type = normal, _ = '_'}, [], ['$1']}]).
 
 ticker(Kernel, Tick) when is_integer(Tick) ->
     process_flag(priority, max),
@@ -1130,15 +1235,8 @@ spawn_func(_,{From,Tag},M,F,A,Gleader) ->
 %% Set up connection to a new node.
 %% -----------------------------------------------------------
 
-setup(Node,Type,From,State) ->
-    Allowed = State#state.allowed,
-    case lists:member(Node, Allowed) of
-	false when Allowed =/= [] ->
-	    error_msg("** Connection attempt with "
-		      "disallowed node ~w ** ~n", [Node]),
-	    {error, bad_node};
-	_ ->
-	    case select_mod(Node, State#state.listen) of
+setup(Node, ConnId, Type, From, State) ->
+    case setup_check(Node, State) of
 		{ok, L} ->
 		    Mod = L#listen.module,
 		    LAddr = L#listen.address,
@@ -1151,16 +1249,34 @@ setup(Node,Type,From,State) ->
 		    Addr = LAddr#net_address {
 					      address = undefined,
 					      host = undefined },
+                    Waiting = case From of
+                                  noreply -> [];
+                                  _ -> [From]
+                              end,
 		    ets:insert(sys_dist, #connection{node = Node,
+                                                     conn_id = ConnId,
 						     state = pending,
 						     owner = Pid,
-						     waiting = [From],
+						     waiting = Waiting,
 						     address = Addr,
 						     type = normal}),
 		    {ok, Pid};
 		Error ->
 		    Error
-	    end
+    end.
+
+setup_check(Node, State) ->
+    Allowed = State#state.allowed,
+    case lists:member(Node, Allowed) of
+	false when Allowed =/= [] ->
+	    error_msg("** Connection attempt with "
+		      "disallowed node ~w ** ~n", [Node]),
+	    {error, bad_node};
+       _ ->
+            case select_mod(Node, State#state.listen) of
+                {ok, _L}=OK -> OK;
+                Error -> Error
+            end
     end.
 
 %%
@@ -1175,7 +1291,6 @@ select_mod(Node, [L|Ls]) ->
 select_mod(Node, []) ->
     {error, {unsupported_address_type, Node}}.
 
-
 get_proto_mod(Family,Protocol,[L|Ls]) ->
     A = L#listen.address,
     if A#net_address.family =:= Family,
@@ -1189,19 +1304,19 @@ get_proto_mod(_Family, _Protocol, []) ->
 
 %% -------- Initialisation functions ------------------------
 
-init_node(Name, LongOrShortNames) ->
-    {NameWithoutHost,_Host} = lists:splitwith(fun($@)->false;(_)->true end,
-				  atom_to_list(Name)),
+init_node(Name, LongOrShortNames, CleanHalt) ->
+    {NameWithoutHost0,_Host} = split_node(Name),
     case create_name(Name, LongOrShortNames, 1) of
 	{ok,Node} ->
-	    case start_protos(list_to_atom(NameWithoutHost),Node) of
+	    NameWithoutHost = list_to_atom(NameWithoutHost0),
+	    case start_protos(NameWithoutHost, Node, CleanHalt) of
 		{ok, Ls} ->
 		    {ok, Node, Ls};
 		Error ->
 		    Error
 	    end;
 	Error ->
- 	    Error
+	    Error
     end.
 
 %% Create the node name
@@ -1213,11 +1328,22 @@ create_name(Name, LongOrShortNames, Try) ->
     {Head,Host1} = create_hostpart(Name, LongOrShortNames),
     case Host1 of
 	{ok,HostPart} ->
-	    {ok,list_to_atom(Head ++ HostPart)};
+            case valid_name_head(Head) of
+                true ->
+                    {ok,list_to_atom(Head ++ HostPart)};
+                false ->
+                    error_logger:info_msg("Invalid node name!\n"
+                                          "Please check your configuration\n"),
+                    {error, badarg}
+            end;
 	{error,long} when Try =:= 1 ->
 	    %% It could be we haven't read domain name from resolv file yet
 	    inet_config:do_load_resolv(os:type(), longnames),
 	    create_name(Name, LongOrShortNames, 0);
+        {error, hostname_not_allowed} ->
+            error_logger:info_msg("Invalid node name!\n"
+                                  "Please check your configuration\n"),
+            {error, badarg};
 	{error,Type} ->
 	    error_logger:info_msg(
 	      lists:concat(["Can\'t set ",
@@ -1228,15 +1354,15 @@ create_name(Name, LongOrShortNames, Try) ->
     end.
 
 create_hostpart(Name, LongOrShortNames) ->
-    {Head,Host} = lists:splitwith(fun($@)->false;(_)->true end,
-				  atom_to_list(Name)),
+    {Head,Host} = split_node(Name),
     Host1 = case {Host,LongOrShortNames} of
-		{[$@,_|_],longnames} ->
-		    {ok,Host};
+		{[$@,_|_] = Host,longnames} ->
+                    validate_hostname(Host);
 		{[$@,_|_],shortnames} ->
 		    case lists:member($.,Host) of
 			true -> {error,short};
-			_ -> {ok,Host}
+			_ ->
+                            validate_hostname(Host)
 		    end;
 		{_,shortnames} ->
 		    case inet_db:gethostname() of
@@ -1255,6 +1381,27 @@ create_hostpart(Name, LongOrShortNames) ->
 		    end
 	    end,
     {Head,Host1}.
+
+validate_hostname([$@|HostPart] = Host) ->
+    {ok, MP} = re:compile("^[!-ÿ]*$", [unicode]),
+    case re:run(HostPart, MP) of
+        {match, _} ->
+            {ok, Host};
+        nomatch ->
+            {error, hostname_not_allowed}
+    end.
+
+valid_name_head(Head) ->
+    {ok, MP} = re:compile("^[0-9A-Za-z_\\-]+$", [unicode]),
+        case re:run(Head, MP) of
+            {match, _} ->
+                true;
+            nomatch ->
+                false
+    end.
+
+split_node(Name) ->
+    lists:splitwith(fun(C) -> C =/= $@ end, atom_to_list(Name)).
 
 %%
 %%
@@ -1278,7 +1425,6 @@ protocol_childspecs([H|T]) ->
 	    protocol_childspecs(T)
     end.
 
-
 %%
 %% epmd_module() -> module_name of erl_epmd or similar gen_server_module.
 %%
@@ -1295,21 +1441,26 @@ epmd_module() ->
 %% Start all protocols
 %%
 
-start_protos(Name,Node) ->
+start_protos(Name, Node, CleanHalt) ->
     case init:get_argument(proto_dist) of
 	{ok, [Protos]} ->
-	    start_protos(Name,Protos, Node);
+	    start_protos(Name, Protos, Node, CleanHalt);
 	_ ->
-	    start_protos(Name,["inet_tcp"], Node)
+	    start_protos(Name, ["inet_tcp"], Node, CleanHalt)
     end.
 
-start_protos(Name,Ps, Node) ->
-    case start_protos(Name, Ps, Node, []) of
-	[] -> {error, badarg};
-	Ls -> {ok, Ls}
+start_protos(Name, Ps, Node, CleanHalt) ->
+    case start_protos(Name, Ps, Node, [], CleanHalt) of
+	[] ->
+	    case CleanHalt of
+		true -> halt(1);
+		false -> {error, badarg}
+	    end;
+	Ls ->
+	    {ok, Ls}
     end.
 
-start_protos(Name, [Proto | Ps], Node, Ls) ->
+start_protos(Name, [Proto | Ps], Node, Ls, CleanHalt) ->
     Mod = list_to_atom(Proto ++ "_dist"),
     case catch Mod:listen(Name) of
 	{ok, {Socket, Address, Creation}} ->
@@ -1322,32 +1473,47 @@ start_protos(Name, [Proto | Ps], Node, Ls) ->
 		      address = Address,
 		      accept = AcceptPid,
 		      module = Mod },
-		    start_protos(Name,Ps, Node, [L|Ls]);
+		    start_protos(Name,Ps, Node, [L|Ls], CleanHalt);
 		_ ->
 		    Mod:close(Socket),
-		    error_logger:info_msg("Invalid node name: ~p~n", [Node]),
-		    start_protos(Name, Ps, Node, Ls)
+		    S = "invalid node name: " ++ atom_to_list(Node),
+		    proto_error(CleanHalt, Proto, S),
+		    start_protos(Name, Ps, Node, Ls, CleanHalt)
 	    end;
 	{'EXIT', {undef,_}} ->
-	    error_logger:info_msg("Protocol: ~p: not supported~n", [Proto]),
-	    start_protos(Name,Ps, Node, Ls);
+	    proto_error(CleanHalt, Proto, "not supported"),
+	    start_protos(Name, Ps, Node, Ls, CleanHalt);
 	{'EXIT', Reason} ->
-	    error_logger:info_msg("Protocol: ~p: register error: ~p~n",
-				  [Proto, Reason]),
-	    start_protos(Name,Ps, Node, Ls);
+	    register_error(CleanHalt, Proto, Reason),
+	    start_protos(Name, Ps, Node, Ls, CleanHalt);
 	{error, duplicate_name} ->
-	    error_logger:info_msg("Protocol: ~p: the name " ++
-				  atom_to_list(Node) ++
-				  " seems to be in use by another Erlang node",
-				  [Proto]),
-	    start_protos(Name,Ps, Node, Ls);
+	    S = "the name " ++ atom_to_list(Node) ++
+		" seems to be in use by another Erlang node",
+	    proto_error(CleanHalt, Proto, S),
+	    start_protos(Name, Ps, Node, Ls, CleanHalt);
 	{error, Reason} ->
-	    error_logger:info_msg("Protocol: ~p: register/listen error: ~p~n",
-				  [Proto, Reason]),
-	    start_protos(Name,Ps, Node, Ls)
+	    register_error(CleanHalt, Proto, Reason),
+	    start_protos(Name, Ps, Node, Ls, CleanHalt)
     end;
-start_protos(_,[], _Node, Ls) ->
+start_protos(_, [], _Node, Ls, _CleanHalt) ->
     Ls.
+
+register_error(false, Proto, Reason) ->
+    S = io_lib:format("register/listen error: ~p", [Reason]),
+    proto_error(false, Proto, lists:flatten(S));
+register_error(true, Proto, Reason) ->
+    S = "Protocol '" ++ Proto ++ "': register/listen error: ",
+    erlang:display_string(S),
+    erlang:display(Reason).
+
+proto_error(CleanHalt, Proto, String) ->
+    S = "Protocol '" ++ Proto ++ "': " ++ String ++ "\n",
+    case CleanHalt of
+	false ->
+	    error_logger:info_msg(S);
+	true ->
+	    erlang:display_string(S)
+    end.
 
 set_node(Node, Creation) when node() =:= nonode@nohost ->
     case catch erlang:setnode(Node, Creation) of
@@ -1424,15 +1590,14 @@ get_node_info(Node, Key) ->
     end.
 
 get_nodes_info() ->
-    get_nodes_info(get_nodes(all), []).
-
-get_nodes_info([Node|Nodes], InfoList) ->
-    case get_node_info(Node) of
-	{ok, Info} -> get_nodes_info(Nodes, [{Node, Info}|InfoList]);
-	_          -> get_nodes_info(Nodes, InfoList)
-    end;
-get_nodes_info([], InfoList) ->
-    {ok, InfoList}.
+    Nodes = ets:select(sys_dist, [{#connection{node = '$1', _ = '_'}, [], ['$1']}]),
+    {ok, lists:filtermap(
+        fun(Node) ->
+            case get_node_info(Node) of
+                {ok, Info} -> {true, {Node, Info}};
+                _ -> false
+             end
+        end, Nodes)}.
 
 %% ------------------------------------------------------------
 %% Misc. functions
@@ -1452,7 +1617,6 @@ reply_waiting1([From|W], Rep) ->
     reply_waiting1(W, Rep);
 reply_waiting1([], _) ->
     ok.
-
 
 -ifdef(UNUSED).
 
@@ -1514,7 +1678,6 @@ fmt_address(A) ->
 	    lists:flatten(io_lib:format("~p", [A#net_address.address]))
     end.
 
-
 fetch(Key, Info) ->
     case lists:keysearch(Key, 1, Info) of
 	{value, {_, Val}} -> Val;
@@ -1551,6 +1714,11 @@ verbose(_, _, _) ->
 getnode(P) when is_pid(P) -> node(P);
 getnode(P) -> P.
 
+return_call({noreply, _State}=R, _From) ->
+    R;
+return_call(R, From) ->
+    async_reply(R, From).
+
 async_reply({reply, Msg, State}, From) ->
     async_gen_server_reply(From, Msg),
     {noreply, State}.
@@ -1558,13 +1726,103 @@ async_reply({reply, Msg, State}, From) ->
 async_gen_server_reply(From, Msg) ->
     {Pid, Tag} = From,
     M = {Tag, Msg},
-    case catch erlang:send(Pid, M, [nosuspend, noconnect]) of
+    try erlang:send(Pid, M, [nosuspend, noconnect]) of
         ok ->
             ok;
         nosuspend ->
-            spawn(fun() -> catch erlang:send(Pid, M, [noconnect]) end);
+            _ = spawn(fun() -> catch erlang:send(Pid, M, [noconnect]) end),
+	    ok;
         noconnect ->
-            ok; % The gen module takes care of this case.
-        {'EXIT', _}=EXIT ->
-            EXIT
+            ok % The gen module takes care of this case.
+    catch
+        _:_ -> ok
     end.
+
+call_owner(Owner, Msg) ->
+    Mref = monitor(process, Owner),
+    Owner ! {self(), Mref, Msg},
+    receive
+	{Mref, Reply} ->
+	    erlang:demonitor(Mref, [flush]),
+	    {ok, Reply};
+	{'DOWN', Mref, _, _, _} ->
+	    error
+    end.
+
+-spec setopts(Node, Options) -> ok | {error, Reason} | ignored when
+      Node :: node() | new,
+      Options :: [inet:socket_setopt()],
+      Reason :: inet:posix() | noconnection.
+
+setopts(Node, Opts) when is_atom(Node), is_list(Opts) ->
+    request({setopts, Node, Opts}).
+
+setopts_new(Opts, State) ->
+    %% First try setopts on listening socket(s)
+    %% Bail out on failure.
+    %% If successful, we are pretty sure Opts are ok
+    %% and we continue with config params and pending connections.
+    case setopts_on_listen(Opts, State#state.listen) of
+	ok ->
+	    setopts_new_1(Opts);
+	Fail -> Fail
+    end.
+
+setopts_on_listen(_, []) -> ok;
+setopts_on_listen(Opts, [#listen {listen = LSocket, module = Mod} | T]) ->
+    try Mod:setopts(LSocket, Opts) of
+	ok ->
+	    setopts_on_listen(Opts, T);
+	Fail -> Fail
+    catch
+	error:undef -> {error, enotsup}
+    end.
+
+setopts_new_1(Opts) ->
+    ConnectOpts = case application:get_env(kernel, inet_dist_connect_options) of
+		      {ok, CO} -> CO;
+		      _ -> []
+		  end,
+    application:set_env(kernel, inet_dist_connect_options,
+			merge_opts(Opts,ConnectOpts)),
+    ListenOpts = case application:get_env(kernel, inet_dist_listen_options) of
+		     {ok, LO} -> LO;
+		     _ -> []
+		 end,
+    application:set_env(kernel, inet_dist_listen_options,
+			merge_opts(Opts, ListenOpts)),
+    case lists:keyfind(nodelay, 1, Opts) of
+	{nodelay, ND} when is_boolean(ND) ->
+	    application:set_env(kernel, dist_nodelay, ND);
+	_ -> ignore
+    end,
+
+    %% Update any pending connections
+    PendingConns = ets:select(sys_dist, [{'_',
+					  [{'=/=',{element,#connection.state,'$_'},up}],
+					  ['$_']}]),
+    lists:foreach(fun(#connection{state = pending, owner = Owner}) ->
+			  call_owner(Owner, {setopts, Opts});
+		     (#connection{state = up_pending, pending_owner = Owner}) ->
+			  call_owner(Owner, {setopts, Opts});
+		     (_) -> ignore
+		  end, PendingConns),
+    ok.
+
+merge_opts([], B) ->
+    B;
+merge_opts([H|T], B0) ->
+    {Key, _} = H,
+    B1 = lists:filter(fun({K,_}) -> K =/= Key end, B0),
+    merge_opts(T, [H | B1]).
+
+-spec getopts(Node, Options) ->
+	{'ok', OptionValues} | {'error', Reason} | ignored when
+      Node :: node(),
+      Options :: [inet:socket_getopt()],
+      OptionValues :: [inet:socket_setopt()],
+      Reason :: inet:posix() | noconnection.
+
+getopts(Node, Opts) when is_atom(Node), is_list(Opts) ->
+    request({getopts, Node, Opts}).
+

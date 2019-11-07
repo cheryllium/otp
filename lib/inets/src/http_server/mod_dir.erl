@@ -1,18 +1,19 @@
 %%
 %% %CopyrightBegin%
 %% 
-%% Copyright Ericsson AB 1997-2010. All Rights Reserved.
+%% Copyright Ericsson AB 1997-2016. All Rights Reserved.
 %% 
-%% The contents of this file are subject to the Erlang Public License,
-%% Version 1.1, (the "License"); you may not use this file except in
-%% compliance with the License. You should have received a copy of the
-%% Erlang Public License along with this software. If not, it can be
-%% retrieved online at http://www.erlang.org/.
-%% 
-%% Software distributed under the License is distributed on an "AS IS"
-%% basis, WITHOUT WARRANTY OF ANY KIND, either express or implied. See
-%% the License for the specific language governing rights and limitations
-%% under the License.
+%% Licensed under the Apache License, Version 2.0 (the "License");
+%% you may not use this file except in compliance with the License.
+%% You may obtain a copy of the License at
+%%
+%%     http://www.apache.org/licenses/LICENSE-2.0
+%%
+%% Unless required by applicable law or agreed to in writing, software
+%% distributed under the License is distributed on an "AS IS" BASIS,
+%% WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+%% See the License for the specific language governing permissions and
+%% limitations under the License.
 %% 
 %% %CopyrightEnd%
 %%
@@ -27,7 +28,6 @@
 %% do
 
 do(Info) ->
-    ?DEBUG("do -> entry",[]),
     case Info#mod.method of
 	"GET" ->
 	    case proplists:get_value(status, Info#mod.data) of
@@ -51,7 +51,6 @@ do(Info) ->
     end.
 
 do_dir(Info) ->
-    ?DEBUG("do_dir -> Request URI: ~p",[Info#mod.request_uri]),
     Path = mod_alias:path(Info#mod.data,Info#mod.config_db,
 			  Info#mod.request_uri),
     DefaultPath = mod_alias:default_index(Info#mod.config_db,Path),
@@ -60,11 +59,6 @@ do_dir(Info) ->
 	{ok,FileInfo} when FileInfo#file_info.type == directory ->
 	    DecodedRequestURI =
 		http_uri:decode(Info#mod.request_uri),
-	    ?DEBUG("do_dir -> ~n"
-		   "      Path:              ~p~n"
-		   "      DefaultPath:       ~p~n"
-		   "      DecodedRequestURI: ~p",
-		   [Path,DefaultPath,DecodedRequestURI]),
 	    case dir(DefaultPath,string:strip(DecodedRequestURI,right,$/),
 		     Info#mod.config_db) of
 		{ok, Dir} ->
@@ -84,21 +78,13 @@ do_dir(Info) ->
 		    {proceed,[{response,{response, Head, Dir}},
 			      {mime_type,"text/html"} | Info#mod.data]};
 		{error, Reason} ->
-		    ?ERROR("do_dir -> dir operation failed: ~p",[Reason]),
 		    {proceed,
 		     [{status,{404,Info#mod.request_uri,Reason}}|
 		      Info#mod.data]}
 	    end;
 	{ok, _FileInfo} ->
-	    ?DEBUG("do_dir -> ~n"
-		   "      Path:        ~p~n"
-		   "      DefaultPath: ~p~n"
-		   "      FileInfo:    ~p",
-		   [Path,DefaultPath,FileInfo]),
 	    {proceed,Info#mod.data};
 	{error,Reason} ->
-	    ?LOG("do_dir -> failed reading file info (~p) for: ~p",
-		 [Reason,DefaultPath]),
 	    Status = httpd_file:handle_error(Reason, "access", Info,
 					     DefaultPath),
 	    {proceed, [{status, Status}| Info#mod.data]}
@@ -124,12 +110,13 @@ header(Path,RequestURI) ->
 	RequestURI ++ "</H1>\n<PRE><IMG SRC=\"" ++ icon(blank) ++
 	"\" ALT="     "> Name                   Last modified         "
 	"Size  Description <HR>\n",
-    case inets_regexp:sub(RequestURI,"[^/]*\$","") of
-	{ok,"/",_} ->
+    case re:replace(RequestURI,"[^/]*\$","", [{return,list}]) of
+	"/" ->
 	    Header;
-	{ok,ParentRequestURI,_} ->
-	    {ok,ParentPath,_} =
-		inets_regexp:sub(string:strip(Path,right,$/),"[^/]*\$",""),
+	ParentRequestURI ->
+	    ParentPath =
+		re:replace(string:strip(Path,right,$/),"[^/]*\$","",
+			   [{return,list}]),
 	    Header++format(ParentPath,ParentRequestURI)
     end.
 

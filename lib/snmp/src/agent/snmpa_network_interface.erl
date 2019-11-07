@@ -1,45 +1,74 @@
 %%
 %% %CopyrightBegin%
 %% 
-%% Copyright Ericsson AB 2004-2009. All Rights Reserved.
+%% Copyright Ericsson AB 2004-2019. All Rights Reserved.
 %% 
-%% The contents of this file are subject to the Erlang Public License,
-%% Version 1.1, (the "License"); you may not use this file except in
-%% compliance with the License. You should have received a copy of the
-%% Erlang Public License along with this software. If not, it can be
-%% retrieved online at http://www.erlang.org/.
-%% 
-%% Software distributed under the License is distributed on an "AS IS"
-%% basis, WITHOUT WARRANTY OF ANY KIND, either express or implied. See
-%% the License for the specific language governing rights and limitations
-%% under the License.
+%% Licensed under the Apache License, Version 2.0 (the "License");
+%% you may not use this file except in compliance with the License.
+%% You may obtain a copy of the License at
+%%
+%%     http://www.apache.org/licenses/LICENSE-2.0
+%%
+%% Unless required by applicable law or agreed to in writing, software
+%% distributed under the License is distributed on an "AS IS" BASIS,
+%% WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+%% See the License for the specific language governing permissions and
+%% limitations under the License.
 %% 
 %% %CopyrightEnd%
 %%
 -module(snmpa_network_interface).
 
--export([behaviour_info/1]).
+%% Note that this behaviour is not enough!
+%% There is also a set of mandatory messages which the
+%% network interface entity must be able to receive and
+%% be able to send. See the documentation for more info.
 
-behaviour_info(callbacks) ->
-    [{start_link,        4}, 
-     {get_log_type,      1},
-     {set_log_type,      2},
-     {get_request_limit, 1},
-     {set_request_limit, 2},
-     {info,              1}, 
-     {verbosity,         2}];
-behaviour_info(_) ->
-    undefined.
+-callback start_link(Prio, NoteStore, MasterAgent, Opts) ->
+    {ok, Pid} | {error, Reason} when
+      Prio        :: low | normal | high, % priority_level(),
+      NoteStore   :: pid(),
+      MasterAgent :: pid(),
+      Opts        :: [Option],
+      Option      :: {verbosity, snmp:verbosity()} |
+                     {versions,  [snmp:version()]} |
+                     term(),
+      Pid         :: pid(),
+      Reason      :: term().
 
+-callback info(Pid) ->
+    Info when
+      Pid   :: pid(),
+      Info  :: [{Key, Value}],
+      Key   :: term(),
+      Value :: term().
 
-%% behaviour_info(callbacks) ->
-%%     [{start_link,        4}, 
-%%      {send_pdu,          5},
-%%      {send_response_pdu, 6},
-%%      {discard_pdu,       6},
-%%      {send_pdu_req,      6},
-%%      {verbosity,         2}, 
-%%      {change_log_type, 2}];
-%% behaviour_info(_) ->
-%%     undefined.
+-callback verbosity(Pid, Verbosity) ->
+    snmp:void() when
+      Pid       :: pid(),
+      Verbosity :: snmp:verbosity().
+
+-callback get_log_type(Pid) ->
+    {ok, LogType} | {error, Reason} when
+      Pid     :: pid(),
+      LogType :: snmp:atl_type(),
+      Reason  :: term().
+
+-callback set_log_type(Pid, NewType) ->
+    {ok, OldType} | {error, Reason} when
+      Pid     :: pid(),
+      NewType :: snmp:atl_type(),
+      OldType :: snmp:atl_type(),
+      Reason  :: term().
+
+-callback get_request_limit(Pid) ->
+    {ok, Limit} when
+      Pid   :: pid(),
+      Limit :: non_neg_integer() | infinity.
+
+-callback set_request_limit(Pid, NewLimit) ->
+    {ok, OldLimit} when
+      Pid      :: pid(),
+      NewLimit :: non_neg_integer() | infinity,
+      OldLimit :: non_neg_integer() | infinity.
 

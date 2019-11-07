@@ -1,18 +1,19 @@
 %%
 %% %CopyrightBegin%
 %% 
-%% Copyright Ericsson AB 2003-2010. All Rights Reserved.
+%% Copyright Ericsson AB 2003-2019. All Rights Reserved.
 %% 
-%% The contents of this file are subject to the Erlang Public License,
-%% Version 1.1, (the "License"); you may not use this file except in
-%% compliance with the License. You should have received a copy of the
-%% Erlang Public License along with this software. If not, it can be
-%% retrieved online at http://www.erlang.org/.
-%% 
-%% Software distributed under the License is distributed on an "AS IS"
-%% basis, WITHOUT WARRANTY OF ANY KIND, either express or implied. See
-%% the License for the specific language governing rights and limitations
-%% under the License.
+%% Licensed under the Apache License, Version 2.0 (the "License");
+%% you may not use this file except in compliance with the License.
+%% You may obtain a copy of the License at
+%%
+%%     http://www.apache.org/licenses/LICENSE-2.0
+%%
+%% Unless required by applicable law or agreed to in writing, software
+%% distributed under the License is distributed on an "AS IS" BASIS,
+%% WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+%% See the License for the specific language governing permissions and
+%% limitations under the License.
 %% 
 %% %CopyrightEnd%
 %%
@@ -26,7 +27,46 @@
 %%----------------------------------------------------------------------
 -module(megaco_trans_test).
 
--compile(export_all).
+%% -compile(export_all).
+-export([
+         all/0,
+         groups/0,
+         init_per_group/2, end_per_group/2,
+         init_per_testcase/2, end_per_testcase/2,
+
+         single_ack/1,
+         multi_ack_timeout/1,
+         multi_ack_maxcount/1,
+
+         single_trans_req/1,
+         multi_trans_req_timeout/1,
+         multi_trans_req_maxcount1/1,
+         multi_trans_req_maxcount2/1,
+         multi_trans_req_maxsize1/1,
+         multi_trans_req_maxsize2/1,
+
+         single_trans_req_and_ack/1,
+         multi_trans_req_and_ack_timeout/1,
+         multi_trans_req_and_ack_ackmaxcount/1,
+         multi_trans_req_and_ack_reqmaxcount/1,
+         multi_trans_req_and_ack_maxsize1/1,
+         multi_trans_req_and_ack_maxsize2/1,
+
+         single_trans_req_and_pending/1,
+         multi_trans_req_and_pending/1,
+         multi_trans_req_and_ack_and_pending/1,
+         multi_ack_and_pending/1,
+
+         multi_trans_req_and_reply/1,
+         multi_trans_req_and_ack_and_reply/1,
+         multi_ack_and_reply/1,
+
+         otp_7192_1/1,
+         otp_7192_2/1,
+         otp_7192_3/1,
+         
+         t/0, t/1
+        ]).
 
 -include("megaco_test_lib.hrl").
 -include_lib("megaco/include/megaco.hrl").
@@ -43,44 +83,42 @@
 -define(A5555, ["11111111", "11111111", "00000000"]).
 -define(A5556, ["11111111", "11111111", "11111111"]).
 
--define(MGC_START(Pid, Mid, ET, Verb), 
-	megaco_test_mgc:start(Pid, Mid, ET, Verb)).
--define(MGC_STOP(Pid), megaco_test_mgc:stop(Pid)).
--define(MGC_GET_STATS(Pid, No), megaco_test_mgc:get_stats(Pid, No)).
--define(MGC_RESET_STATS(Pid), megaco_test_mgc:reset_stats(Pid)).
--define(MGC_REQ_DISC(Pid,To), megaco_test_mgc:request_discard(Pid,To)).
--define(MGC_REQ_PEND(Pid,To), megaco_test_mgc:request_pending(Pid,To)).
--define(MGC_REQ_HAND(Pid),    megaco_test_mgc:request_handle(Pid)).
--define(MGC_REQ_HANDS(Pid),   megaco_test_mgc:request_handle_sloppy(Pid)).
--define(MGC_UPDATE_UI(Pid,Tag,Val), 
-	megaco_test_mgc:update_user_info(Pid,Tag,Val)).
--define(MGC_UPDATE_CI(Pid,Tag,Val), 
-	megaco_test_mgc:update_conn_info(Pid,Tag,Val)).
--define(MGC_USER_INFO(Pid,Tag), megaco_test_mgc:user_info(Pid,Tag)).
--define(MGC_CONN_INFO(Pid,Tag), megaco_test_mgc:conn_info(Pid,Tag)).
--define(MGC_ACK_INFO(Pid,To),   megaco_test_mgc:ack_info(Pid,To)).
--define(MGC_REQ_INFO(Pid,To),   megaco_test_mgc:req_info(Pid,To)).
+-define(MG,  megaco_test_mg).
+-define(MGC, megaco_test_mgc).
+
+-define(MGC_START(Pid, Mid, ET, Verb), ?MGC:start(Pid, Mid, ET, Verb)).
+-define(MGC_STOP(Pid),                 ?MGC:stop(Pid)).
+-define(MGC_GET_STATS(Pid, No),        ?MGC:get_stats(Pid, No)).
+-define(MGC_RESET_STATS(Pid),          ?MGC:reset_stats(Pid)).
+-define(MGC_REQ_DISC(Pid,To),          ?MGC:request_discard(Pid,To)).
+-define(MGC_REQ_PEND(Pid,To),          ?MGC:request_pending(Pid,To)).
+-define(MGC_REQ_HAND(Pid),             ?MGC:request_handle(Pid)).
+-define(MGC_REQ_HANDS(Pid),            ?MGC:request_handle_sloppy(Pid)).
+-define(MGC_UPDATE_UI(Pid,Tag,Val),    ?MGC:update_user_info(Pid,Tag,Val)).
+-define(MGC_UPDATE_CI(Pid,Tag,Val),    ?MGC:update_conn_info(Pid,Tag,Val)).
+-define(MGC_USER_INFO(Pid,Tag),        ?MGC:user_info(Pid,Tag)).
+-define(MGC_CONN_INFO(Pid,Tag),        ?MGC:conn_info(Pid,Tag)).
+-define(MGC_ACK_INFO(Pid,To),          ?MGC:ack_info(Pid,To)).
+-define(MGC_REQ_INFO(Pid,To),          ?MGC:req_info(Pid,To)).
 
 -define(MG_START(Pid, Mid, Enc, Transp, Conf, Verb), 
-	megaco_test_mg:start(Pid, Mid, Enc, Transp, Conf, Verb)).
--define(MG_STOP(Pid), megaco_test_mg:stop(Pid)).
--define(MG_GET_STATS(Pid),   megaco_test_mg:get_stats(Pid)).
--define(MG_RESET_STATS(Pid), megaco_test_mg:reset_stats(Pid)).
--define(MG_SERV_CHANGE(Pid), megaco_test_mg:service_change(Pid)).
--define(MG_NOTIF_RAR(Pid), megaco_test_mg:notify_request_and_reply(Pid)).
--define(MG_NOTIF_REQ(Pid), megaco_test_mg:notify_request(Pid)).
--define(MG_NOTIF_AR(Pid),  megaco_test_mg:await_notify_reply(Pid)).
--define(MG_CANCEL(Pid,R),  megaco_test_mg:cancel_request(Pid,R)).
--define(MG_APPLY_LOAD(Pid,CntStart), megaco_test_mg:apply_load(Pid,CntStart)).
--define(MG_UPDATE_UI(Pid,Tag,Val), 
-	megaco_test_mg:update_user_info(Pid,Tag,Val)).
--define(MG_UPDATE_CI(Pid,Tag,Val), 
-	megaco_test_mg:update_conn_info(Pid,Tag,Val)).
--define(MG_USER_INFO(Pid,Tag), megaco_test_mg:user_info(Pid,Tag)).
--define(MG_CONN_INFO(Pid,Tag), megaco_test_mg:conn_info(Pid,Tag)).
--define(MG_GRP_REQ(Pid,N),     megaco_test_mg:group_requests(Pid,N)).
--define(MG_ACK_INFO(Pid,To),   megaco_test_mg:ack_info(Pid,To)).
--define(MG_REP_INFO(Pid,To),   megaco_test_mg:rep_info(Pid,To)).
+	?MG:start(Pid, Mid, Enc, Transp, Conf, Verb)).
+-define(MG_STOP(Pid),                ?MG:stop(Pid)).
+-define(MG_GET_STATS(Pid),           ?MG:get_stats(Pid)).
+-define(MG_RESET_STATS(Pid),         ?MG:reset_stats(Pid)).
+-define(MG_SERV_CHANGE(Pid),         ?MG:service_change(Pid)).
+-define(MG_NOTIF_RAR(Pid),           ?MG:notify_request_and_reply(Pid)).
+-define(MG_NOTIF_REQ(Pid),           ?MG:notify_request(Pid)).
+-define(MG_NOTIF_AR(Pid),            ?MG:await_notify_reply(Pid)).
+-define(MG_CANCEL(Pid,R),            ?MG:cancel_request(Pid,R)).
+-define(MG_APPLY_LOAD(Pid,CntStart), ?MG:apply_load(Pid,CntStart)).
+-define(MG_UPDATE_UI(Pid,Tag,Val),   ?MG:update_user_info(Pid,Tag,Val)).
+-define(MG_UPDATE_CI(Pid,Tag,Val),   ?MG:update_conn_info(Pid,Tag,Val)).
+-define(MG_USER_INFO(Pid,Tag),       ?MG:user_info(Pid,Tag)).
+-define(MG_CONN_INFO(Pid,Tag),       ?MG:conn_info(Pid,Tag)).
+-define(MG_GRP_REQ(Pid,N),           ?MG:group_requests(Pid,N)).
+-define(MG_ACK_INFO(Pid,To),         ?MG:ack_info(Pid,To)).
+-define(MG_REP_INFO(Pid,To),         ?MG:rep_info(Pid,To)).
 
 t()     -> megaco_test_lib:t(?MODULE).
 t(Case) -> megaco_test_lib:t({?MODULE, Case}).
@@ -103,35 +141,77 @@ end_per_testcase(Case, Config) ->
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 all() -> 
-    [{group, ack}, {group, trans_req},
-     {group, trans_req_and_ack}, {group, pending},
-     {group, reply}, {group, tickets}].
+    [{group, ack},
+     {group, trans_req},
+     {group, trans_req_and_ack},
+     {group, pending},
+     {group, reply},
+     {group, tickets}].
 
 groups() -> 
-    [{ack, [],
-      [single_ack, multi_ack_timeout, multi_ack_maxcount]},
-     {trans_req, [],
-      [single_trans_req, multi_trans_req_timeout,
-       multi_trans_req_maxcount1, multi_trans_req_maxcount2,
-       multi_trans_req_maxsize1, multi_trans_req_maxsize2]},
-     {trans_req_and_ack, [],
-      [single_trans_req_and_ack,
-       multi_trans_req_and_ack_timeout,
-       multi_trans_req_and_ack_ackmaxcount,
-       multi_trans_req_and_ack_reqmaxcount,
-       multi_trans_req_and_ack_maxsize1,
-       multi_trans_req_and_ack_maxsize2]},
-     {pending, [],
-      [single_trans_req_and_pending,
-       multi_trans_req_and_pending,
-       multi_trans_req_and_ack_and_pending,
-       multi_ack_and_pending]},
-     {reply, [],
-      [multi_trans_req_and_reply,
-       multi_trans_req_and_ack_and_reply,
-       multi_ack_and_reply]},
-     {tickets, [], [{group, otp_7192}]},
-     {otp_7192, [], [otp_7192_1, otp_7192_2, otp_7192_3]}].
+    [
+     {ack,               [], ack_cases()},
+     {trans_req,         [], trans_req_cases()},
+     {trans_req_and_ack, [], trans_req_and_ack_cases()},
+     {pending,           [], pending_cases()},
+     {reply,             [], reply_cases()},
+     {tickets,           [], tickets_cases()},
+     {otp_7192,          [], otp_7192_cases()}
+    ].
+
+ack_cases() ->
+    [
+     single_ack,
+     multi_ack_timeout,
+     multi_ack_maxcount
+    ].
+
+trans_req_cases() ->
+    [
+     single_trans_req,
+     multi_trans_req_timeout,
+     multi_trans_req_maxcount1,
+     multi_trans_req_maxcount2,
+     multi_trans_req_maxsize1,
+     multi_trans_req_maxsize2
+    ].
+
+trans_req_and_ack_cases() ->
+    [
+     single_trans_req_and_ack,
+     multi_trans_req_and_ack_timeout,
+     multi_trans_req_and_ack_ackmaxcount,
+     multi_trans_req_and_ack_reqmaxcount,
+     multi_trans_req_and_ack_maxsize1,
+     multi_trans_req_and_ack_maxsize2
+    ].
+
+pending_cases() ->
+    [
+     single_trans_req_and_pending,
+     multi_trans_req_and_pending,
+     multi_trans_req_and_ack_and_pending,
+     multi_ack_and_pending
+    ].
+
+reply_cases() ->
+    [
+     multi_trans_req_and_reply,
+     multi_trans_req_and_ack_and_reply,
+     multi_ack_and_reply
+    ].
+
+tickets_cases() ->
+    [
+     {group, otp_7192}
+    ].
+
+otp_7192_cases() ->
+    [
+     otp_7192_1,
+     otp_7192_2,
+     otp_7192_3
+    ].
 
 init_per_group(_GroupName, Config) ->
     Config.
@@ -155,8 +235,8 @@ single_ack(Config) when is_list(Config) ->
     MgcNode = make_node_name(mgc),
     MgNode  = make_node_name(mg),
     d("start nodes: "
-      "~n   MgcNode: ~p"
-      "~n   MgNode:  ~p", 
+      "~n      MGC Node: ~p"
+      "~n      MG Node:  ~p", 
       [MgcNode, MgNode]),
     ok = megaco_test_lib:start_nodes([MgcNode, MgNode], ?FILE, ?LINE),
 
@@ -215,7 +295,7 @@ multi_ack_timeout(doc) ->
     [];
 multi_ack_timeout(Config) when is_list(Config) ->
     %% <CONDITIONAL-SKIP>
-    Skippable = [win32, {unix, [darwin, linux]}], 
+    Skippable = [win32, {unix, [darwin, linux, sunos]}], % Is there any left?
     Condition = fun() -> ?OS_BASED_SKIP(Skippable) end,
     ?NON_PC_TC_MAYBE_SKIP(Config, Condition),
     %% </CONDITIONAL-SKIP>
@@ -230,8 +310,8 @@ multi_ack_timeout(Config) when is_list(Config) ->
     MgcNode  = make_node_name(mgc),
     MgNode   = make_node_name(mg),
     d("start nodes: "
-      "~n   MgcNode: ~p"
-      "~n   MgNode:  ~p", 
+      "~n      MGC Node: ~p"
+      "~n      MG Node:  ~p", 
       [MgcNode, MgNode]),
     ok = megaco_test_lib:start_nodes([MgcNode, MgNode], ?FILE, ?LINE),
 
@@ -307,8 +387,8 @@ multi_ack_maxcount(Config) when is_list(Config) ->
     MgcNode  = make_node_name(mgc),
     MgNode   = make_node_name(mg),
     d("start nodes: "
-      "~n   MgcNode: ~p"
-      "~n   MgNode:  ~p", 
+      "~n      MGC Node: ~p"
+      "~n      MG Node:  ~p", 
       [MgcNode, MgNode]),
     ok = megaco_test_lib:start_nodes([MgcNode, MgNode], ?FILE, ?LINE),
 
@@ -392,8 +472,8 @@ single_trans_req(Config) when is_list(Config) ->
     MgcNode = make_node_name(mgc),
     MgNode  = make_node_name(mg),
     d("start nodes: "
-      "~n   MgcNode: ~p"
-      "~n   MgNode:  ~p", 
+      "~n      MGC Node: ~p"
+      "~n      MG Node:  ~p", 
       [MgcNode, MgNode]),
     ok = megaco_test_lib:start_nodes([MgcNode, MgNode], ?FILE, ?LINE),
 
@@ -410,8 +490,15 @@ single_trans_req(Config) when is_list(Config) ->
     d("[MGC] start the simulation"),
     {ok, MgcId} = megaco_test_megaco_generator:exec(Mgc, MgcEvSeq),
 
-    i("wait some time before starting the MG simulator"),
-    sleep(1000),
+    %% i("wait some time before starting the MG simulator"),
+    %% sleep(1000),
+
+    i("await MGC ready announcement"),
+    receive
+        announce_mgc ->
+            i("received MGC ready announcement"),
+            ok
+    end,
 
     d("[MG] start the simulator (generator)"),
     {ok, Mg} = megaco_test_megaco_generator:start_link("MG", MgNode),
@@ -464,6 +551,7 @@ single_trans_req(Config) when is_list(Config) ->
 -endif.
 
 str_mgc_event_sequence(text, tcp) ->
+    CTRL = self(),
     Mid = {deviceName,"ctrl"},
     RI = [
 	  {port,             2944},
@@ -475,10 +563,6 @@ str_mgc_event_sequence(text, tcp) ->
     ServiceChangeReqVerify = ?str_mgc_service_change_req_verify_fun(Mid),
     NotifyReqVerify        = ?str_mgc_notify_req_verify_fun(),
     DiscoVerify            = ?str_mgc_disco_verify_fun(),
-%%     ConnectVerify = fun str_mgc_verify_handle_connect/1,
-%%     ServiceChangeReqVerify = str_mgc_verify_service_change_req_fun(Mid),
-%%     NotifyReqVerify = str_mgc_verify_notify_request_fun(),
-%%     DiscoVerify = fun str_mgc_verify_handle_disconnect/1,
     EvSeq = [
 	     {debug, false},
 	     {megaco_trace, disable},
@@ -486,6 +570,10 @@ str_mgc_event_sequence(text, tcp) ->
 	     {megaco_start_user, Mid, RI, []},
 	     start_transport,
 	     listen,
+
+             %% ANNOUNCE READY
+             {trigger, fun() -> CTRL ! announce_mgc end}, 
+
 	     {megaco_callback, handle_connect, ConnectVerify},
 	     {megaco_callback, handle_trans_request, ServiceChangeReqVerify},
 	     {megaco_callback, handle_trans_request, NotifyReqVerify},
@@ -627,26 +715,26 @@ str_mgc_service_change_reply_ar(Mid, Cid) ->
     CR    = cre_cmdReply(SCR),
     cre_actionReply(Cid, [CR]).
 
-str_mgc_service_change_reply_msg(Mid, TransId, Cid) ->
-    AR    = str_mgc_service_change_reply_ar(Mid, Cid),
-    TRes  = cre_transResult([AR]),
-    TR    = cre_transReply(TransId, TRes),
-    Trans = cre_transaction(TR),
-    Mess  = cre_message(?VERSION, Mid, cre_transactions([Trans])),
-    cre_megacoMessage(Mess).
+%% str_mgc_service_change_reply_msg(Mid, TransId, Cid) ->
+%%     AR    = str_mgc_service_change_reply_ar(Mid, Cid),
+%%     TRes  = cre_transResult([AR]),
+%%     TR    = cre_transReply(TransId, TRes),
+%%     Trans = cre_transaction(TR),
+%%     Mess  = cre_message(?VERSION, Mid, cre_transactions([Trans])),
+%%     cre_megacoMessage(Mess).
 
 str_mgc_notify_reply_ar(Cid, TermId) ->
     NR    = cre_notifyReply([TermId]),
     CR    = cre_cmdReply(NR),
     cre_actionReply(Cid, [CR]).
 
-str_mgc_notify_reply(Mid, TransId, Cid, TermId) ->
-    AR    = str_mgc_notify_reply_ar(Cid, TermId),
-    TRes  = cre_transResult([AR]),
-    TR    = cre_transReply(TransId, TRes),
-    Trans = cre_transaction(TR),
-    Mess  = cre_message(?VERSION, Mid, cre_transactions([Trans])),
-    cre_megacoMessage(Mess).
+%% str_mgc_notify_reply(Mid, TransId, Cid, TermId) ->
+%%     AR    = str_mgc_notify_reply_ar(Cid, TermId),
+%%     TRes  = cre_transResult([AR]),
+%%     TR    = cre_transReply(TransId, TRes),
+%%     Trans = cre_transaction(TR),
+%%     Mess  = cre_message(?VERSION, Mid, cre_transactions([Trans])),
+%%     cre_megacoMessage(Mess).
 
 
 %%
@@ -682,9 +770,6 @@ str_mg_event_sequence(text, tcp) ->
     ConnectVerify            = ?str_mg_connect_verify_fun(), 
     ServiceChangeReplyVerify = ?str_mg_service_change_reply_verify_fun(), 
     NotifyReplyVerify        = ?str_mg_notify_reply_verify_fun(), 
-    %% ConnectVerify = fun str_mg_verify_handle_connect/1,
-    %% ServiceChangeReplyVerify = fun str_mg_verify_service_change_reply/1,
-    %% NotifyReplyVerify = fun str_mg_verify_notify_reply/1, 
     EvSeq = [
 	     {debug, true},
 	     megaco_start,
@@ -777,12 +862,12 @@ str_mg_service_change_request_ar(_Mid, Cid) ->
     CR    = cre_cmdReq(CMD),
     cre_actionReq(Cid, [CR]).
 
-str_mg_service_change_request_msg(Mid, TransId, Cid) ->
-    AR    = str_mg_service_change_request_ar(Mid, Cid),
-    TR    = cre_transReq(TransId, [AR]),
-    Trans = cre_transaction(TR),
-    Mess  = cre_message(?VERSION, Mid, cre_transactions([Trans])),
-    cre_megacoMessage(Mess).
+%% str_mg_service_change_request_msg(Mid, TransId, Cid) ->
+%%     AR    = str_mg_service_change_request_ar(Mid, Cid),
+%%     TR    = cre_transReq(TransId, [AR]),
+%%     Trans = cre_transaction(TR),
+%%     Mess  = cre_message(?VERSION, Mid, cre_transactions([Trans])),
+%%     cre_megacoMessage(Mess).
 
 str_mg_notify_request_ar(Rid, Tid, Cid) ->
     TT      = cre_timeNotation("19990729", "22000000"),
@@ -793,12 +878,12 @@ str_mg_notify_request_ar(Rid, Tid, Cid) ->
     CR      = cre_cmdReq(CMD),
     cre_actionReq(Cid, [CR]).
 
-str_notify_request_msg(Mid, TransId, Rid, TermId, Cid) ->
-    AR      = str_mg_notify_request_ar(Rid, TermId, Cid),
-    TR      = cre_transReq(TransId, [AR]),
-    Trans   = cre_transaction(TR),
-    Mess    = cre_message(?VERSION, Mid, cre_transactions([Trans])),
-    cre_megacoMessage(Mess).
+%% str_notify_request_msg(Mid, TransId, Rid, TermId, Cid) ->
+%%     AR      = str_mg_notify_request_ar(Rid, TermId, Cid),
+%%     TR      = cre_transReq(TransId, [AR]),
+%%     Trans   = cre_transaction(TR),
+%%     Mess    = cre_message(?VERSION, Mid, cre_transactions([Trans])),
+%%     cre_megacoMessage(Mess).
 
 
 %%
@@ -826,8 +911,8 @@ multi_trans_req_timeout(Config) when is_list(Config) ->
     MgcNode = make_node_name(mgc),
     MgNode  = make_node_name(mg),
     d("start nodes: "
-      "~n   MgcNode: ~p"
-      "~n   MgNode:  ~p", 
+      "~n      MGC Node: ~p"
+      "~n      MG Node:  ~p", 
       [MgcNode, MgNode]),
     ok = megaco_test_lib:start_nodes([MgcNode, MgNode], ?FILE, ?LINE),
 
@@ -844,8 +929,15 @@ multi_trans_req_timeout(Config) when is_list(Config) ->
     d("[MGC] start the simulation"),
     {ok, MgcId} = megaco_test_megaco_generator:exec(Mgc, MgcEvSeq),
 
-    i("wait some time before starting the MG simulator"),
-    sleep(1000),
+    %% i("wait some time before starting the MG simulator"),
+    %% sleep(1000),
+
+    i("await MGC ready announcement"),
+    receive
+        announce_mgc ->
+            i("received MGC ready announcement"),
+            ok
+    end,
 
     d("[MG] start the simulator (generator)"),
     {ok, Mg} = megaco_test_megaco_generator:start_link("MG", MgNode),
@@ -898,6 +990,7 @@ multi_trans_req_timeout(Config) when is_list(Config) ->
 -endif.
 
 mtrt_mgc_event_sequence(text, tcp) ->
+    CTRL = self(),
     Mid = {deviceName,"ctrl"},
     RI = [
 	  {port,             2944},
@@ -909,10 +1002,6 @@ mtrt_mgc_event_sequence(text, tcp) ->
     ServiceChangeReqVerify = ?mtrt_mgc_verify_service_change_req_fun(Mid),
     NotifyReqVerify        = ?mtrt_mgc_verify_notify_req_fun(),
     DiscoVerify            = ?mtrt_mgc_verify_handle_disconnect_fun(), 
-%%     ConnectVerify          = fun mtrt_mgc_verify_handle_connect/1,
-%%     ServiceChangeReqVerify = mtrt_mgc_verify_service_change_req_fun(Mid),
-%%     NotifyReqVerify        = mtrt_mgc_verify_notify_request_fun(),
-%%     DiscoVerify            = fun mtrt_mgc_verify_handle_disconnect/1,
     EvSeq = [
 	     {debug, true},
 	     {megaco_trace, disable},
@@ -920,14 +1009,18 @@ mtrt_mgc_event_sequence(text, tcp) ->
 	     {megaco_start_user, Mid, RI, []},
 	     start_transport,
 	     listen,
-	     {megaco_callback, handle_connect, ConnectVerify},
+
+             %% ANNOUNCE READY
+             {trigger, fun() -> CTRL ! announce_mgc end}, 
+
+	     {megaco_callback, handle_connect,       ConnectVerify},
 	     {megaco_callback, handle_trans_request, ServiceChangeReqVerify},
 	     {megaco_callback, handle_trans_request, NotifyReqVerify},
 	     {megaco_callback, handle_trans_request, NotifyReqVerify},
 	     {megaco_callback, handle_trans_request, NotifyReqVerify},
 	     {megaco_callback, handle_trans_request, NotifyReqVerify},
 	     {megaco_callback, handle_trans_request, NotifyReqVerify},
-	     {megaco_callback, handle_disconnect, DiscoVerify},
+	     {megaco_callback, handle_disconnect,    DiscoVerify},
 	     {sleep, 1000},
 	     megaco_stop_user,
 	     megaco_stop
@@ -1062,26 +1155,26 @@ mtrt_mgc_service_change_reply_ar(Mid, Cid) ->
     CR    = cre_cmdReply(SCR),
     cre_actionReply(Cid, [CR]).
 
-mtrt_mgc_service_change_reply_msg(Mid, TransId, Cid) ->
-    AR    = mtrt_mgc_service_change_reply_ar(Mid, Cid),
-    TRes  = cre_transResult([AR]),
-    TR    = cre_transReply(TransId, TRes),
-    Trans = cre_transaction(TR),
-    Mess  = cre_message(?VERSION, Mid, cre_transactions([Trans])),
-    cre_megacoMessage(Mess).
+%% mtrt_mgc_service_change_reply_msg(Mid, TransId, Cid) ->
+%%     AR    = mtrt_mgc_service_change_reply_ar(Mid, Cid),
+%%     TRes  = cre_transResult([AR]),
+%%     TR    = cre_transReply(TransId, TRes),
+%%     Trans = cre_transaction(TR),
+%%     Mess  = cre_message(?VERSION, Mid, cre_transactions([Trans])),
+%%     cre_megacoMessage(Mess).
 
 mtrt_mgc_notify_reply_ar(Cid, TermId) ->
     NR    = cre_notifyReply([TermId]),
     CR    = cre_cmdReply(NR),
     cre_actionReply(Cid, [CR]).
 
-mtrt_mgc_notify_reply(Mid, TransId, Cid, TermId) ->
-    AR    = mtrt_mgc_notify_reply_ar(Cid, TermId),
-    TRes  = cre_transResult([AR]),
-    TR    = cre_transReply(TransId, TRes),
-    Trans = cre_transaction(TR),
-    Mess  = cre_message(?VERSION, Mid, cre_transactions([Trans])),
-    cre_megacoMessage(Mess).
+%% mtrt_mgc_notify_reply(Mid, TransId, Cid, TermId) ->
+%%     AR    = mtrt_mgc_notify_reply_ar(Cid, TermId),
+%%     TRes  = cre_transResult([AR]),
+%%     TR    = cre_transReply(TransId, TRes),
+%%     Trans = cre_transaction(TR),
+%%     Mess  = cre_message(?VERSION, Mid, cre_transactions([Trans])),
+%%     cre_megacoMessage(Mess).
 
 
 %%
@@ -1223,12 +1316,12 @@ mtrt_mg_service_change_request_ar(_Mid, Cid) ->
     CR    = cre_cmdReq(CMD),
     cre_actionReq(Cid, [CR]).
 
-mtrt_mg_service_change_request_msg(Mid, TransId, Cid) ->
-    AR    = mtrt_mg_service_change_request_ar(Mid, Cid),
-    TR    = cre_transReq(TransId, [AR]),
-    Trans = cre_transaction(TR),
-    Mess  = cre_message(?VERSION, Mid, cre_transactions([Trans])),
-    cre_megacoMessage(Mess).
+%% mtrt_mg_service_change_request_msg(Mid, TransId, Cid) ->
+%%     AR    = mtrt_mg_service_change_request_ar(Mid, Cid),
+%%     TR    = cre_transReq(TransId, [AR]),
+%%     Trans = cre_transaction(TR),
+%%     Mess  = cre_message(?VERSION, Mid, cre_transactions([Trans])),
+%%     cre_megacoMessage(Mess).
 
 mtrt_mg_notify_request_ar(Rid, Tid, Cid) ->
     TT      = cre_timeNotation("19990729", "22000000"),
@@ -1239,12 +1332,12 @@ mtrt_mg_notify_request_ar(Rid, Tid, Cid) ->
     CR      = cre_cmdReq(CMD),
     cre_actionReq(Cid, [CR]).
 
-mtrt_notify_request_msg(Mid, TransId, Rid, TermId, Cid) ->
-    AR      = mtrt_mg_notify_request_ar(Rid, TermId, Cid),
-    TR      = cre_transReq(TransId, [AR]),
-    Trans   = cre_transaction(TR),
-    Mess    = cre_message(?VERSION, Mid, cre_transactions([Trans])),
-    cre_megacoMessage(Mess).
+%% mtrt_notify_request_msg(Mid, TransId, Rid, TermId, Cid) ->
+%%     AR      = mtrt_mg_notify_request_ar(Rid, TermId, Cid),
+%%     TR      = cre_transReq(TransId, [AR]),
+%%     Trans   = cre_transaction(TR),
+%%     Mess    = cre_message(?VERSION, Mid, cre_transactions([Trans])),
+%%     cre_megacoMessage(Mess).
 
 
 %%
@@ -1272,8 +1365,8 @@ multi_trans_req_maxcount1(Config) when is_list(Config) ->
     MgcNode = make_node_name(mgc),
     MgNode  = make_node_name(mg),
     d("start nodes: "
-      "~n   MgcNode: ~p"
-      "~n   MgNode:  ~p", 
+      "~n      MGC Node: ~p"
+      "~n      MG Node:  ~p", 
       [MgcNode, MgNode]),
     ok = megaco_test_lib:start_nodes([MgcNode, MgNode], ?FILE, ?LINE),
 
@@ -1290,8 +1383,15 @@ multi_trans_req_maxcount1(Config) when is_list(Config) ->
     d("[MGC] start the simulation"),
     {ok, MgcId} = megaco_test_megaco_generator:exec(Mgc, MgcEvSeq),
 
-    i("wait some time before starting the MG simulator"),
-    sleep(1000),
+    %% i("wait some time before starting the MG simulator"),
+    %% sleep(1000),
+
+    i("await MGC ready announcement"),
+    receive
+        announce_mgc ->
+            i("received MGC ready announcement"),
+            ok
+    end,
 
     d("[MG] start the simulator (generator)"),
     {ok, Mg} = megaco_test_megaco_generator:start_link("MG", MgNode),
@@ -1344,6 +1444,7 @@ multi_trans_req_maxcount1(Config) when is_list(Config) ->
 -endif.
 
 mtrmc1_mgc_event_sequence(text, tcp) ->
+    CTRL = self(),
     Mid = {deviceName,"ctrl"},
     RI = [
 	  {port,             2944},
@@ -1355,10 +1456,6 @@ mtrmc1_mgc_event_sequence(text, tcp) ->
     ServiceChangeReqVerify = ?mtrmc1_mgc_verify_service_change_req_fun(Mid),
     NotifyReqVerify        = ?mtrmc1_mgc_verify_notify_req_fun(),
     DiscoVerify            = ?mtrmc1_mgc_verify_handle_disconnect_fun(), 
-%%     ConnectVerify = fun mtrmc1_mgc_verify_handle_connect/1,
-%%     ServiceChangeReqVerify = mtrmc1_mgc_verify_service_change_req_fun(Mid),
-%%     NotifyReqVerify = mtrmc1_mgc_verify_notify_request_fun(),
-%%     DiscoVerify = fun mtrmc1_mgc_verify_handle_disconnect/1,
     EvSeq = [
 	     {debug, true},
 	     {megaco_trace, disable},
@@ -1366,14 +1463,18 @@ mtrmc1_mgc_event_sequence(text, tcp) ->
 	     {megaco_start_user, Mid, RI, []},
 	     start_transport,
 	     listen,
-	     {megaco_callback, handle_connect, ConnectVerify},
+
+             %% ANNOUNCE READY
+             {trigger, fun() -> CTRL ! announce_mgc end}, 
+
+	     {megaco_callback, handle_connect,       ConnectVerify},
 	     {megaco_callback, handle_trans_request, ServiceChangeReqVerify},
 	     {megaco_callback, handle_trans_request, NotifyReqVerify},
 	     {megaco_callback, handle_trans_request, NotifyReqVerify},
 	     {megaco_callback, handle_trans_request, NotifyReqVerify},
 	     {megaco_callback, handle_trans_request, NotifyReqVerify},
 	     {megaco_callback, handle_trans_request, NotifyReqVerify},
-	     {megaco_callback, handle_disconnect, DiscoVerify},
+	     {megaco_callback, handle_disconnect,    DiscoVerify},
 	     {sleep, 1000},
 	     megaco_stop_user,
 	     megaco_stop
@@ -1508,26 +1609,26 @@ mtrmc1_mgc_service_change_reply_ar(Mid, Cid) ->
     CR    = cre_cmdReply(SCR),
     cre_actionReply(Cid, [CR]).
 
-mtrmc1_mgc_service_change_reply_msg(Mid, TransId, Cid) ->
-    AR    = mtrmc1_mgc_service_change_reply_ar(Mid, Cid),
-    TRes  = cre_transResult([AR]),
-    TR    = cre_transReply(TransId, TRes),
-    Trans = cre_transaction(TR),
-    Mess  = cre_message(?VERSION, Mid, cre_transactions([Trans])),
-    cre_megacoMessage(Mess).
+%% mtrmc1_mgc_service_change_reply_msg(Mid, TransId, Cid) ->
+%%     AR    = mtrmc1_mgc_service_change_reply_ar(Mid, Cid),
+%%     TRes  = cre_transResult([AR]),
+%%     TR    = cre_transReply(TransId, TRes),
+%%     Trans = cre_transaction(TR),
+%%     Mess  = cre_message(?VERSION, Mid, cre_transactions([Trans])),
+%%     cre_megacoMessage(Mess).
 
 mtrmc1_mgc_notify_reply_ar(Cid, TermId) ->
     NR    = cre_notifyReply([TermId]),
     CR    = cre_cmdReply(NR),
     cre_actionReply(Cid, [CR]).
 
-mtrmc1_mgc_notify_reply(Mid, TransId, Cid, TermId) ->
-    AR    = mtrmc1_mgc_notify_reply_ar(Cid, TermId),
-    TRes  = cre_transResult([AR]),
-    TR    = cre_transReply(TransId, TRes),
-    Trans = cre_transaction(TR),
-    Mess  = cre_message(?VERSION, Mid, cre_transactions([Trans])),
-    cre_megacoMessage(Mess).
+%% mtrmc1_mgc_notify_reply(Mid, TransId, Cid, TermId) ->
+%%     AR    = mtrmc1_mgc_notify_reply_ar(Cid, TermId),
+%%     TRes  = cre_transResult([AR]),
+%%     TR    = cre_transReply(TransId, TRes),
+%%     Trans = cre_transaction(TR),
+%%     Mess  = cre_message(?VERSION, Mid, cre_transactions([Trans])),
+%%     cre_megacoMessage(Mess).
 
 
 %%
@@ -1563,9 +1664,6 @@ mtrmc1_mg_event_sequence(text, tcp) ->
     ConnectVerify            = ?mtrmc1_mg_verify_handle_connect_fun(), 
     ServiceChangeReplyVerify = ?mtrmc1_mg_verify_service_change_reply_fun(), 
     NotifyReplyVerify        = ?mtrmc1_mg_verify_notify_reply_fun(), 
-%%     ConnectVerify            = fun mtrmc1_mg_verify_handle_connect/1,
-%%     ServiceChangeReplyVerify = fun mtrmc1_mg_verify_service_change_reply/1,
-%%     NotifyReplyVerify        = fun mtrmc1_mg_verify_notify_reply/1, 
     EvSeq = [
 	     {debug, true},
 	     megaco_start,
@@ -1674,12 +1772,12 @@ mtrmc1_mg_service_change_request_ar(_Mid, Cid) ->
     CR    = cre_cmdReq(CMD),
     cre_actionReq(Cid, [CR]).
 
-mtrmc1_mg_service_change_request_msg(Mid, TransId, Cid) ->
-    AR    = mtrmc1_mg_service_change_request_ar(Mid, Cid),
-    TR    = cre_transReq(TransId, [AR]),
-    Trans = cre_transaction(TR),
-    Mess  = cre_message(?VERSION, Mid, cre_transactions([Trans])),
-    cre_megacoMessage(Mess).
+%% mtrmc1_mg_service_change_request_msg(Mid, TransId, Cid) ->
+%%     AR    = mtrmc1_mg_service_change_request_ar(Mid, Cid),
+%%     TR    = cre_transReq(TransId, [AR]),
+%%     Trans = cre_transaction(TR),
+%%     Mess  = cre_message(?VERSION, Mid, cre_transactions([Trans])),
+%%     cre_megacoMessage(Mess).
 
 mtrmc1_mg_notify_request_ar(Rid, Tid, Cid) ->
     TT      = cre_timeNotation("19990729", "22000000"),
@@ -1690,12 +1788,12 @@ mtrmc1_mg_notify_request_ar(Rid, Tid, Cid) ->
     CR      = cre_cmdReq(CMD),
     cre_actionReq(Cid, [CR]).
 
-mtrmc1_notify_request_msg(Mid, TransId, Rid, TermId, Cid) ->
-    AR      = mtrmc1_mg_notify_request_ar(Rid, TermId, Cid),
-    TR      = cre_transReq(TransId, [AR]),
-    Trans   = cre_transaction(TR),
-    Mess    = cre_message(?VERSION, Mid, cre_transactions([Trans])),
-    cre_megacoMessage(Mess).
+%% mtrmc1_notify_request_msg(Mid, TransId, Rid, TermId, Cid) ->
+%%     AR      = mtrmc1_mg_notify_request_ar(Rid, TermId, Cid),
+%%     TR      = cre_transReq(TransId, [AR]),
+%%     Trans   = cre_transaction(TR),
+%%     Mess    = cre_message(?VERSION, Mid, cre_transactions([Trans])),
+%%     cre_megacoMessage(Mess).
 
 
 %%
@@ -1724,8 +1822,8 @@ multi_trans_req_maxcount2(Config) when is_list(Config) ->
     MgcNode = make_node_name(mgc),
     MgNode  = make_node_name(mg),
     d("start nodes: "
-      "~n   MgcNode: ~p"
-      "~n   MgNode:  ~p", 
+      "~n      MGC Node: ~p"
+      "~n      MG Node:  ~p", 
       [MgcNode, MgNode]),
     ok = megaco_test_lib:start_nodes([MgcNode, MgNode], ?FILE, ?LINE),
 
@@ -1742,8 +1840,15 @@ multi_trans_req_maxcount2(Config) when is_list(Config) ->
     d("[MGC] start the simulation"),
    {ok, MgcId} =  megaco_test_megaco_generator:exec(Mgc, MgcEvSeq),
 
-    i("wait some time before starting the MG simulator"),
-    sleep(1000),
+    %% i("wait some time before starting the MG simulator"),
+    %% sleep(1000),
+
+    i("await MGC ready announcement"),
+    receive
+        announce_mgc ->
+            i("received MGC ready announcement"),
+            ok
+    end,
 
     d("[MG] start the simulator (generator)"),
     {ok, Mg} = megaco_test_megaco_generator:start_link("MG", MgNode),
@@ -1796,6 +1901,7 @@ multi_trans_req_maxcount2(Config) when is_list(Config) ->
 -endif.
 
 mtrmc2_mgc_event_sequence(text, tcp) ->
+    CTRL = self(),
     Mid = {deviceName,"ctrl"},
     RI = [
 	  {port,             2944},
@@ -1807,10 +1913,6 @@ mtrmc2_mgc_event_sequence(text, tcp) ->
     ServiceChangeReqVerify = ?mtrmc2_mgc_verify_service_change_req_fun(Mid),
     NotifyReqVerify        = ?mtrmc2_mgc_verify_notify_req_fun(),
     DiscoVerify            = ?mtrmc2_mgc_verify_handle_disconnect_fun(), 
-%%     ConnectVerify          = fun mtrmc2_mgc_verify_handle_connect/1,
-%%     ServiceChangeReqVerify = mtrmc2_mgc_verify_service_change_req_fun(Mid),
-%%     NotifyReqVerify        = mtrmc2_mgc_verify_notify_request_fun(),
-%%     DiscoVerify            = fun mtrmc2_mgc_verify_handle_disconnect/1,
     EvSeq = [
 	     {debug, true},
 	     {megaco_trace, disable},
@@ -1818,6 +1920,10 @@ mtrmc2_mgc_event_sequence(text, tcp) ->
 	     {megaco_start_user, Mid, RI, []},
 	     start_transport,
 	     listen,
+
+             %% ANNOUNCE READY
+             {trigger, fun() -> CTRL ! announce_mgc end}, 
+
 	     {megaco_callback, handle_connect,       ConnectVerify},
 	     {megaco_callback, handle_trans_request, ServiceChangeReqVerify},
 	     {megaco_callback, handle_trans_request, NotifyReqVerify},
@@ -1977,13 +2083,13 @@ mtrmc2_mgc_service_change_reply_ar(Mid, Cid) ->
     CR    = cre_cmdReply(SCR),
     cre_actionReply(Cid, [CR]).
 
-mtrmc2_mgc_service_change_reply_msg(Mid, TransId, Cid) ->
-    AR    = mtrmc2_mgc_service_change_reply_ar(Mid, Cid),
-    TRes  = cre_transResult([AR]),
-    TR    = cre_transReply(TransId, TRes),
-    Trans = cre_transaction(TR),
-    Mess  = cre_message(?VERSION, Mid, cre_transactions([Trans])),
-    cre_megacoMessage(Mess).
+%% mtrmc2_mgc_service_change_reply_msg(Mid, TransId, Cid) ->
+%%     AR    = mtrmc2_mgc_service_change_reply_ar(Mid, Cid),
+%%     TRes  = cre_transResult([AR]),
+%%     TR    = cre_transReply(TransId, TRes),
+%%     Trans = cre_transaction(TR),
+%%     Mess  = cre_message(?VERSION, Mid, cre_transactions([Trans])),
+%%     cre_megacoMessage(Mess).
 
 mtrmc2_mgc_notify_reply_ar1(Cid, Tid) ->
     NR = cre_notifyReply([Tid]),
@@ -1994,13 +2100,13 @@ mtrmc2_mgc_notify_reply_ar2(Cid, Tids) ->
     CRs = [cre_cmdReply(cre_notifyReply([Tid])) || Tid <- Tids],
     cre_actionReply(Cid, CRs).
 
-mtrmc2_mgc_notify_reply(Mid, TransId, Cid, TermId) ->
-    AR    = mtrmc2_mgc_notify_reply_ar1(Cid, TermId),
-    TRes  = cre_transResult([AR]),
-    TR    = cre_transReply(TransId, TRes),
-    Trans = cre_transaction(TR),
-    Mess  = cre_message(?VERSION, Mid, cre_transactions([Trans])),
-    cre_megacoMessage(Mess).
+%% mtrmc2_mgc_notify_reply(Mid, TransId, Cid, TermId) ->
+%%     AR    = mtrmc2_mgc_notify_reply_ar1(Cid, TermId),
+%%     TRes  = cre_transResult([AR]),
+%%     TR    = cre_transReply(TransId, TRes),
+%%     Trans = cre_transaction(TR),
+%%     Mess  = cre_message(?VERSION, Mid, cre_transactions([Trans])),
+%%     cre_megacoMessage(Mess).
 
 
 %%
@@ -2041,9 +2147,6 @@ mtrmc2_mg_event_sequence(text, tcp) ->
     ConnectVerify            = ?mtrmc2_mg_verify_handle_connect_fun(), 
     ServiceChangeReplyVerify = ?mtrmc2_mg_verify_service_change_reply_fun(), 
     NotifyReplyVerify        = ?mtrmc2_mg_verify_notify_reply_fun(), 
-%%     ConnectVerify            = fun mtrmc2_mg_verify_handle_connect/1,
-%%     ServiceChangeReplyVerify = fun mtrmc2_mg_verify_service_change_reply/1,
-%%     NotifyReplyVerify        = fun mtrmc2_mg_verify_notify_reply/1, 
     EvSeq = [
 	     {debug, true},
 	     megaco_start,
@@ -2162,12 +2265,12 @@ mtrmc2_mg_service_change_request_ar(_Mid, Cid) ->
     CR    = cre_cmdReq(CMD),
     cre_actionReq(Cid, [CR]).
 
-mtrmc2_mg_service_change_request_msg(Mid, TransId, Cid) ->
-    AR    = mtrmc2_mg_service_change_request_ar(Mid, Cid),
-    TR    = cre_transReq(TransId, [AR]),
-    Trans = cre_transaction(TR),
-    Mess  = cre_message(?VERSION, Mid, cre_transactions([Trans])),
-    cre_megacoMessage(Mess).
+%% mtrmc2_mg_service_change_request_msg(Mid, TransId, Cid) ->
+%%     AR    = mtrmc2_mg_service_change_request_ar(Mid, Cid),
+%%     TR    = cre_transReq(TransId, [AR]),
+%%     Trans = cre_transaction(TR),
+%%     Mess  = cre_message(?VERSION, Mid, cre_transactions([Trans])),
+%%     cre_megacoMessage(Mess).
 
 mtrmc2_mg_notify_request_ar1(Rid, Tid, Cid) ->
     TT      = cre_timeNotation("19990729", "22000000"),
@@ -2193,12 +2296,12 @@ mtrmc2_mg_notify_request_ar2(Rid, Tid, Cid) ->
     CRs = [F(N) || N <- Ns],
     cre_actionReq(Cid, CRs).
 
-mtrmc2_notify_request_msg(Mid, TransId, Rid, TermId, Cid) ->
-    AR      = mtrmc2_mg_notify_request_ar1(Rid, TermId, Cid),
-    TR      = cre_transReq(TransId, [AR]),
-    Trans   = cre_transaction(TR),
-    Mess    = cre_message(?VERSION, Mid, cre_transactions([Trans])),
-    cre_megacoMessage(Mess).
+%% mtrmc2_notify_request_msg(Mid, TransId, Rid, TermId, Cid) ->
+%%     AR      = mtrmc2_mg_notify_request_ar1(Rid, TermId, Cid),
+%%     TR      = cre_transReq(TransId, [AR]),
+%%     Trans   = cre_transaction(TR),
+%%     Mess    = cre_message(?VERSION, Mid, cre_transactions([Trans])),
+%%     cre_megacoMessage(Mess).
 
 
 %%
@@ -2228,8 +2331,8 @@ multi_trans_req_maxsize1(Config) when is_list(Config) ->
     MgcNode = make_node_name(mgc),
     MgNode  = make_node_name(mg),
     d("start nodes: "
-      "~n   MgcNode: ~p"
-      "~n   MgNode:  ~p", 
+      "~n      MGC Node: ~p"
+      "~n      MG Node:  ~p", 
       [MgcNode, MgNode]),
     ok = megaco_test_lib:start_nodes([MgcNode, MgNode], ?FILE, ?LINE),
 
@@ -2246,8 +2349,15 @@ multi_trans_req_maxsize1(Config) when is_list(Config) ->
     d("[MGC] start the simulation"),
     {ok, MgcId} = megaco_test_megaco_generator:exec(Mgc, MgcEvSeq),
 
-    i("wait some time before starting the MG simulator"),
-    sleep(1000),
+    %% i("wait some time before starting the MG simulator"),
+    %% sleep(1000),
+
+    i("await MGC ready announcement"),
+    receive
+        announce_mgc ->
+            i("received MGC ready announcement"),
+            ok
+    end,
 
     d("[MG] start the simulator (generator)"),
     {ok, Mg} = megaco_test_megaco_generator:start_link("MG", MgNode),
@@ -2300,6 +2410,7 @@ multi_trans_req_maxsize1(Config) when is_list(Config) ->
 -endif.
 
 mtrms1_mgc_event_sequence(text, tcp) ->
+    CTRL = self(),
     Mid = {deviceName,"ctrl"},
     RI = [
 	  {port,             2944},
@@ -2311,10 +2422,6 @@ mtrms1_mgc_event_sequence(text, tcp) ->
     ServiceChangeReqVerify = ?mtrms1_mgc_verify_service_change_req_fun(Mid),
     NotifyReqVerify        = ?mtrms1_mgc_verify_notify_req_fun(),
     DiscoVerify            = ?mtrms1_mgc_verify_handle_disconnect_fun(), 
-%%     ConnectVerify          = fun mtrms1_mgc_verify_handle_connect/1,
-%%     ServiceChangeReqVerify = mtrms1_mgc_verify_service_change_req_fun(Mid),
-%%     NotifyReqVerify1       = mtrms1_mgc_verify_notify_request_fun1(),
-%%     DiscoVerify            = fun mtrms1_mgc_verify_handle_disconnect/1,
     EvSeq = [
 	     {debug, true},
 	     {megaco_trace, disable},
@@ -2322,6 +2429,10 @@ mtrms1_mgc_event_sequence(text, tcp) ->
 	     {megaco_start_user, Mid, RI, []},
 	     start_transport,
 	     listen,
+
+             %% ANNOUNCE READY
+             {trigger, fun() -> CTRL ! announce_mgc end}, 
+
 	     {megaco_callback, handle_connect,       ConnectVerify},
 	     {megaco_callback, handle_trans_request, ServiceChangeReqVerify},
 	     {megaco_callback, handle_trans_request, NotifyReqVerify},
@@ -2465,26 +2576,26 @@ mtrms1_mgc_service_change_reply_ar(Mid, Cid) ->
     CR    = cre_cmdReply(SCR),
     cre_actionReply(Cid, [CR]).
 
-mtrms1_mgc_service_change_reply_msg(Mid, TransId, Cid) ->
-    AR    = mtrms1_mgc_service_change_reply_ar(Mid, Cid),
-    TRes  = cre_transResult([AR]),
-    TR    = cre_transReply(TransId, TRes),
-    Trans = cre_transaction(TR),
-    Mess  = cre_message(?VERSION, Mid, cre_transactions([Trans])),
-    cre_megacoMessage(Mess).
+%% mtrms1_mgc_service_change_reply_msg(Mid, TransId, Cid) ->
+%%     AR    = mtrms1_mgc_service_change_reply_ar(Mid, Cid),
+%%     TRes  = cre_transResult([AR]),
+%%     TR    = cre_transReply(TransId, TRes),
+%%     Trans = cre_transaction(TR),
+%%     Mess  = cre_message(?VERSION, Mid, cre_transactions([Trans])),
+%%     cre_megacoMessage(Mess).
 
 mtrms1_mgc_notify_reply_ar1(Cid, Tid) ->
     NR = cre_notifyReply([Tid]),
     CR = cre_cmdReply(NR),
     cre_actionReply(Cid, [CR]).
 
-mtrms1_mgc_notify_reply(Mid, TransId, Cid, TermId) ->
-    AR    = mtrms1_mgc_notify_reply_ar1(Cid, TermId),
-    TRes  = cre_transResult([AR]),
-    TR    = cre_transReply(TransId, TRes),
-    Trans = cre_transaction(TR),
-    Mess  = cre_message(?VERSION, Mid, cre_transactions([Trans])),
-    cre_megacoMessage(Mess).
+%% mtrms1_mgc_notify_reply(Mid, TransId, Cid, TermId) ->
+%%     AR    = mtrms1_mgc_notify_reply_ar1(Cid, TermId),
+%%     TRes  = cre_transResult([AR]),
+%%     TR    = cre_transReply(TransId, TRes),
+%%     Trans = cre_transaction(TR),
+%%     Mess  = cre_message(?VERSION, Mid, cre_transactions([Trans])),
+%%     cre_megacoMessage(Mess).
 
 
 %%
@@ -2522,9 +2633,6 @@ mtrms1_mg_event_sequence(text, tcp) ->
     ConnectVerify            = ?mtrms1_mg_verify_handle_connect_fun(), 
     ServiceChangeReplyVerify = ?mtrms1_mg_verify_service_change_reply_fun(), 
     NotifyReplyVerify        = ?mtrms1_mg_verify_notify_reply_fun(), 
-%%     ConnectVerify            = fun mtrms1_mg_verify_handle_connect/1,
-%%     ServiceChangeReplyVerify = fun mtrms1_mg_verify_service_change_reply/1,
-%%     NotifyReplyVerify        = fun mtrms1_mg_verify_notify_reply/1, 
     EvSeq = [
 	     {debug, true},
 	     megaco_start,
@@ -2632,12 +2740,12 @@ mtrms1_mg_service_change_request_ar(_Mid, Cid) ->
     CR    = cre_cmdReq(CMD),
     cre_actionReq(Cid, [CR]).
 
-mtrms1_mg_service_change_request_msg(Mid, TransId, Cid) ->
-    AR    = mtrms1_mg_service_change_request_ar(Mid, Cid),
-    TR    = cre_transReq(TransId, [AR]),
-    Trans = cre_transaction(TR),
-    Mess  = cre_message(?VERSION, Mid, cre_transactions([Trans])),
-    cre_megacoMessage(Mess).
+%% mtrms1_mg_service_change_request_msg(Mid, TransId, Cid) ->
+%%     AR    = mtrms1_mg_service_change_request_ar(Mid, Cid),
+%%     TR    = cre_transReq(TransId, [AR]),
+%%     Trans = cre_transaction(TR),
+%%     Mess  = cre_message(?VERSION, Mid, cre_transactions([Trans])),
+%%     cre_megacoMessage(Mess).
 
 mtrms1_mg_notify_request_ar1(Rid, Tid, Cid) ->
     TT      = cre_timeNotation("19990729", "22000000"),
@@ -2648,18 +2756,16 @@ mtrms1_mg_notify_request_ar1(Rid, Tid, Cid) ->
     CR      = cre_cmdReq(CMD),
     cre_actionReq(Cid, [CR]).
 
-mtrms1_notify_request_msg(Mid, TransId, Rid, TermId, Cid) ->
-    AR      = mtrms1_mg_notify_request_ar1(Rid, TermId, Cid),
-    TR      = cre_transReq(TransId, [AR]),
-    Trans   = cre_transaction(TR),
-    Mess    = cre_message(?VERSION, Mid, cre_transactions([Trans])),
-    cre_megacoMessage(Mess).
+%% mtrms1_notify_request_msg(Mid, TransId, Rid, TermId, Cid) ->
+%%     AR      = mtrms1_mg_notify_request_ar1(Rid, TermId, Cid),
+%%     TR      = cre_transReq(TransId, [AR]),
+%%     Trans   = cre_transaction(TR),
+%%     Mess    = cre_message(?VERSION, Mid, cre_transactions([Trans])),
+%%     cre_megacoMessage(Mess).
 
 
 mtrms1_err_desc(T) ->
-    EC = ?megaco_internal_gateway_error,
-    ET = lists:flatten(io_lib:format("~w",[T])),
-    #'ErrorDescriptor'{errorCode = EC, errorText = ET}.
+    cre_ErrDesc(T).
 
 
 
@@ -2680,8 +2786,8 @@ multi_trans_req_maxsize2(Config) when is_list(Config) ->
     MgcNode = make_node_name(mgc),
     MgNode  = make_node_name(mg),
     d("start nodes: "
-      "~n   MgcNode: ~p"
-      "~n   MgNode:  ~p", 
+      "~n      MGC Node: ~p"
+      "~n      MG Node:  ~p", 
       [MgcNode, MgNode]),
     ok = megaco_test_lib:start_nodes([MgcNode, MgNode], ?FILE, ?LINE),
 
@@ -2698,8 +2804,15 @@ multi_trans_req_maxsize2(Config) when is_list(Config) ->
     d("[MGC] start the simulation"),
     {ok, MgcId} = megaco_test_megaco_generator:exec(Mgc, MgcEvSeq),
 
-    i("wait some time before starting the MG simulator"),
-    sleep(1000),
+    %% i("wait some time before starting the MG simulator"),
+    %% sleep(1000),
+
+    i("await MGC ready announcement"),
+    receive
+        announce_mgc ->
+            i("received MGC ready announcement"),
+            ok
+    end,
 
     d("[MG] start the simulator (generator)"),
     {ok, Mg} = megaco_test_megaco_generator:start_link("MG", MgNode),
@@ -2752,6 +2865,7 @@ multi_trans_req_maxsize2(Config) when is_list(Config) ->
 -endif.
 
 mtrms2_mgc_event_sequence(text, tcp) ->
+    CTRL = self(),
     Mid = {deviceName,"ctrl"},
     RI = [
 	  {port,             2944},
@@ -2763,10 +2877,6 @@ mtrms2_mgc_event_sequence(text, tcp) ->
     ServiceChangeReqVerify = ?mtrms2_mgc_verify_service_change_req_fun(Mid),
     NotifyReqVerify        = ?mtrms2_mgc_verify_notify_req_fun(),
     DiscoVerify            = ?mtrms2_mgc_verify_handle_disconnect_fun(), 
-%%     ConnectVerify          = fun mtrms2_mgc_verify_handle_connect/1,
-%%     ServiceChangeReqVerify = mtrms2_mgc_verify_service_change_req_fun(Mid),
-%%     NotifyReqVerify        = mtrms2_mgc_verify_notify_request_fun(),
-%%     DiscoVerify            = fun mtrms2_mgc_verify_handle_disconnect/1,
     EvSeq = [
 	     {debug, true},
 	     {megaco_trace, disable},
@@ -2774,6 +2884,10 @@ mtrms2_mgc_event_sequence(text, tcp) ->
 	     {megaco_start_user, Mid, RI, []},
 	     start_transport,
 	     listen,
+
+             %% ANNOUNCE READY
+             {trigger, fun() -> CTRL ! announce_mgc end}, 
+
 	     {megaco_callback, handle_connect,       ConnectVerify},
 	     {megaco_callback, handle_trans_request, ServiceChangeReqVerify},
 	     {megaco_callback, handle_trans_request, NotifyReqVerify},
@@ -2933,13 +3047,13 @@ mtrms2_mgc_service_change_reply_ar(Mid, Cid) ->
     CR    = cre_cmdReply(SCR),
     cre_actionReply(Cid, [CR]).
 
-mtrms2_mgc_service_change_reply_msg(Mid, TransId, Cid) ->
-    AR    = mtrms2_mgc_service_change_reply_ar(Mid, Cid),
-    TRes  = cre_transResult([AR]),
-    TR    = cre_transReply(TransId, TRes),
-    Trans = cre_transaction(TR),
-    Mess  = cre_message(?VERSION, Mid, cre_transactions([Trans])),
-    cre_megacoMessage(Mess).
+%% mtrms2_mgc_service_change_reply_msg(Mid, TransId, Cid) ->
+%%     AR    = mtrms2_mgc_service_change_reply_ar(Mid, Cid),
+%%     TRes  = cre_transResult([AR]),
+%%     TR    = cre_transReply(TransId, TRes),
+%%     Trans = cre_transaction(TR),
+%%     Mess  = cre_message(?VERSION, Mid, cre_transactions([Trans])),
+%%     cre_megacoMessage(Mess).
 
 mtrms2_mgc_notify_reply_ar1(Cid, Tid) ->
     NR = cre_notifyReply([Tid]),
@@ -2950,13 +3064,13 @@ mtrms2_mgc_notify_reply_ar2(Cid, Tids) ->
     CRs = [cre_cmdReply(cre_notifyReply([Tid])) || Tid <- Tids],
     cre_actionReply(Cid, CRs).
 
-mtrms2_mgc_notify_reply(Mid, TransId, Cid, TermId) ->
-    AR    = mtrms2_mgc_notify_reply_ar1(Cid, TermId),
-    TRes  = cre_transResult([AR]),
-    TR    = cre_transReply(TransId, TRes),
-    Trans = cre_transaction(TR),
-    Mess  = cre_message(?VERSION, Mid, cre_transactions([Trans])),
-    cre_megacoMessage(Mess).
+%% mtrms2_mgc_notify_reply(Mid, TransId, Cid, TermId) ->
+%%     AR    = mtrms2_mgc_notify_reply_ar1(Cid, TermId),
+%%     TRes  = cre_transResult([AR]),
+%%     TR    = cre_transReply(TransId, TRes),
+%%     Trans = cre_transaction(TR),
+%%     Mess  = cre_message(?VERSION, Mid, cre_transactions([Trans])),
+%%     cre_megacoMessage(Mess).
 
 
 %%
@@ -2993,9 +3107,6 @@ mtrms2_mg_event_sequence(text, tcp) ->
     ConnectVerify            = ?mtrms2_mg_verify_handle_connect_fun(), 
     ServiceChangeReplyVerify = ?mtrms2_mg_verify_service_change_reply_fun(), 
     NotifyReplyVerify        = ?mtrms2_mg_verify_notify_reply_fun(), 
-%%     ConnectVerify            = fun mtrms2_mg_verify_handle_connect/1,
-%%     ServiceChangeReplyVerify = fun mtrms2_mg_verify_service_change_reply/1,
-%%     NotifyReplyVerify        = fun mtrms2_mg_verify_notify_reply/1, 
     EvSeq = [
 	     {debug, true},
 	     megaco_start,
@@ -3114,12 +3225,12 @@ mtrms2_mg_service_change_request_ar(_Mid, Cid) ->
     CR    = cre_cmdReq(CMD),
     cre_actionReq(Cid, [CR]).
 
-mtrms2_mg_service_change_request_msg(Mid, TransId, Cid) ->
-    AR    = mtrms2_mg_service_change_request_ar(Mid, Cid),
-    TR    = cre_transReq(TransId, [AR]),
-    Trans = cre_transaction(TR),
-    Mess  = cre_message(?VERSION, Mid, cre_transactions([Trans])),
-    cre_megacoMessage(Mess).
+%% mtrms2_mg_service_change_request_msg(Mid, TransId, Cid) ->
+%%     AR    = mtrms2_mg_service_change_request_ar(Mid, Cid),
+%%     TR    = cre_transReq(TransId, [AR]),
+%%     Trans = cre_transaction(TR),
+%%     Mess  = cre_message(?VERSION, Mid, cre_transactions([Trans])),
+%%     cre_megacoMessage(Mess).
 
 mtrms2_mg_notify_request_ar1(Rid, Tid, Cid) ->
     TT      = cre_timeNotation("19990729", "22000000"),
@@ -3145,18 +3256,16 @@ mtrms2_mg_notify_request_ar2(Rid, Tid, Cid) ->
     CRs = [F(N) || N <- Ns],
     cre_actionReq(Cid, CRs).
 
-mtrms2_notify_request_msg(Mid, TransId, Rid, TermId, Cid) ->
-    AR      = mtrms2_mg_notify_request_ar1(Rid, TermId, Cid),
-    TR      = cre_transReq(TransId, [AR]),
-    Trans   = cre_transaction(TR),
-    Mess    = cre_message(?VERSION, Mid, cre_transactions([Trans])),
-    cre_megacoMessage(Mess).
+%% mtrms2_notify_request_msg(Mid, TransId, Rid, TermId, Cid) ->
+%%     AR      = mtrms2_mg_notify_request_ar1(Rid, TermId, Cid),
+%%     TR      = cre_transReq(TransId, [AR]),
+%%     Trans   = cre_transaction(TR),
+%%     Mess    = cre_message(?VERSION, Mid, cre_transactions([Trans])),
+%%     cre_megacoMessage(Mess).
 
 
 mtrms2_err_desc(T) ->
-    EC = ?megaco_internal_gateway_error,
-    ET = lists:flatten(io_lib:format("~w",[T])),
-    #'ErrorDescriptor'{errorCode = EC, errorText = ET}.
+    cre_ErrDesc(T).
 
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -3174,8 +3283,8 @@ single_trans_req_and_ack(Config) when is_list(Config) ->
     MgcNode = make_node_name(mgc),
     MgNode  = make_node_name(mg),
     d("start nodes: "
-      "~n   MgcNode: ~p"
-      "~n   MgNode:  ~p", 
+      "~n      MGC Node: ~p"
+      "~n      MG Node:  ~p", 
       [MgcNode, MgNode]),
     ok = megaco_test_lib:start_nodes([MgcNode, MgNode], ?FILE, ?LINE),
 
@@ -3192,8 +3301,15 @@ single_trans_req_and_ack(Config) when is_list(Config) ->
     d("[MGC] start the simulation"),
     {ok, MgcId} = megaco_test_megaco_generator:exec(Mgc, MgcEvSeq),
 
-    i("wait some time before starting the MG simulator"),
-    sleep(1000),
+    %% i("wait some time before starting the MG simulator"),
+    %% sleep(1000),
+
+    i("await MGC ready announcement"),
+    receive
+        announce_mgc ->
+            i("received MGC ready announcement"),
+            ok
+    end,
 
     d("[MG] start the simulator (generator)"),
     {ok, Mg} = megaco_test_megaco_generator:start_link("MG", MgNode),
@@ -3250,6 +3366,7 @@ single_trans_req_and_ack(Config) when is_list(Config) ->
 -endif.
 
 straa_mgc_event_sequence(text, tcp) ->
+    CTRL = self(),
     Mid = {deviceName,"ctrl"},
     RI = [
 	  {port,             2944},
@@ -3262,11 +3379,6 @@ straa_mgc_event_sequence(text, tcp) ->
     NotifyReqVerify        = ?straa_mgc_verify_notify_req_fun(),
     AckVerify              = ?straa_mgc_verify_ack_fun(), 
     DiscoVerify            = ?straa_mgc_verify_handle_disconnect_fun(), 
-%%     ConnectVerify          = fun straa_mgc_verify_handle_connect/1,
-%%     ServiceChangeReqVerify = straa_mgc_verify_service_change_req_fun(Mid),
-%%     NotifyReqVerify        = straa_mgc_verify_notify_request_fun(),
-%%     AckVerify              = fun straa_mgc_verify_ack/1, 
-%%     DiscoVerify            = fun straa_mgc_verify_handle_disconnect/1,
     EvSeq = [
 	     {debug, true},
 	     {megaco_trace, disable},
@@ -3274,6 +3386,10 @@ straa_mgc_event_sequence(text, tcp) ->
 	     {megaco_start_user, Mid, RI, []},
 	     start_transport,
 	     listen,
+
+             %% ANNOUNCE READY
+             {trigger, fun() -> CTRL ! announce_mgc end}, 
+
 	     {megaco_callback, handle_connect,       ConnectVerify},
 	     {megaco_callback, handle_trans_request, ServiceChangeReqVerify},
 	     {megaco_callback, handle_trans_request, NotifyReqVerify},
@@ -3438,26 +3554,26 @@ straa_mgc_service_change_reply_ar(Mid, Cid) ->
     CR    = cre_cmdReply(SCR),
     cre_actionReply(Cid, [CR]).
 
-straa_mgc_service_change_reply_msg(Mid, TransId, Cid) ->
-    AR    = straa_mgc_service_change_reply_ar(Mid, Cid),
-    TRes  = cre_transResult([AR]),
-    TR    = cre_transReply(TransId, TRes),
-    Trans = cre_transaction(TR),
-    Mess  = cre_message(?VERSION, Mid, cre_transactions([Trans])),
-    cre_megacoMessage(Mess).
+%% straa_mgc_service_change_reply_msg(Mid, TransId, Cid) ->
+%%     AR    = straa_mgc_service_change_reply_ar(Mid, Cid),
+%%     TRes  = cre_transResult([AR]),
+%%     TR    = cre_transReply(TransId, TRes),
+%%     Trans = cre_transaction(TR),
+%%     Mess  = cre_message(?VERSION, Mid, cre_transactions([Trans])),
+%%     cre_megacoMessage(Mess).
 
 straa_mgc_notify_reply_ar(Cid, TermId) ->
     NR    = cre_notifyReply([TermId]),
     CR    = cre_cmdReply(NR),
     cre_actionReply(Cid, [CR]).
 
-straa_mgc_notify_reply(Mid, TransId, Cid, TermId) ->
-    AR    = straa_mgc_notify_reply_ar(Cid, TermId),
-    TRes  = cre_transResult([AR]),
-    TR    = cre_transReply(TransId, TRes),
-    Trans = cre_transaction(TR),
-    Mess  = cre_message(?VERSION, Mid, cre_transactions([Trans])),
-    cre_megacoMessage(Mess).
+%% straa_mgc_notify_reply(Mid, TransId, Cid, TermId) ->
+%%     AR    = straa_mgc_notify_reply_ar(Cid, TermId),
+%%     TRes  = cre_transResult([AR]),
+%%     TR    = cre_transReply(TransId, TRes),
+%%     Trans = cre_transaction(TR),
+%%     Mess  = cre_message(?VERSION, Mid, cre_transactions([Trans])),
+%%     cre_megacoMessage(Mess).
 
 
 %%
@@ -3495,9 +3611,6 @@ straa_mg_event_sequence(text, tcp) ->
     ConnectVerify            = ?straa_mg_verify_handle_connect_fun(), 
     ServiceChangeReplyVerify = ?straa_mg_verify_service_change_reply_fun(), 
     NotifyReplyVerify        = ?straa_mg_verify_notify_reply_fun(), 
-%%     ConnectVerify            = fun straa_mg_verify_handle_connect/1,
-%%     ServiceChangeReplyVerify = fun straa_mg_verify_service_change_reply/1,
-%%     NotifyReplyVerify        = fun straa_mg_verify_notify_reply/1, 
     EvSeq = [
 	     {debug, true},
 	     megaco_start,
@@ -3604,12 +3717,12 @@ straa_mg_service_change_request_ar(_Mid, Cid) ->
     CR    = cre_cmdReq(CMD),
     cre_actionReq(Cid, [CR]).
 
-straa_mg_service_change_request_msg(Mid, TransId, Cid) ->
-    AR    = straa_mg_service_change_request_ar(Mid, Cid),
-    TR    = cre_transReq(TransId, [AR]),
-    Trans = cre_transaction(TR),
-    Mess  = cre_message(?VERSION, Mid, cre_transactions([Trans])),
-    cre_megacoMessage(Mess).
+%% straa_mg_service_change_request_msg(Mid, TransId, Cid) ->
+%%     AR    = straa_mg_service_change_request_ar(Mid, Cid),
+%%     TR    = cre_transReq(TransId, [AR]),
+%%     Trans = cre_transaction(TR),
+%%     Mess  = cre_message(?VERSION, Mid, cre_transactions([Trans])),
+%%     cre_megacoMessage(Mess).
 
 straa_mg_notify_request_ar(Rid, Tid, Cid) ->
     TT      = cre_timeNotation("19990729", "22000000"),
@@ -3620,12 +3733,12 @@ straa_mg_notify_request_ar(Rid, Tid, Cid) ->
     CR      = cre_cmdReq(CMD),
     cre_actionReq(Cid, [CR]).
 
-straa_notify_request_msg(Mid, TransId, Rid, TermId, Cid) ->
-    AR      = straa_mg_notify_request_ar(Rid, TermId, Cid),
-    TR      = cre_transReq(TransId, [AR]),
-    Trans   = cre_transaction(TR),
-    Mess    = cre_message(?VERSION, Mid, cre_transactions([Trans])),
-    cre_megacoMessage(Mess).
+%% straa_notify_request_msg(Mid, TransId, Rid, TermId, Cid) ->
+%%     AR      = straa_mg_notify_request_ar(Rid, TermId, Cid),
+%%     TR      = cre_transReq(TransId, [AR]),
+%%     Trans   = cre_transaction(TR),
+%%     Mess    = cre_message(?VERSION, Mid, cre_transactions([Trans])),
+%%     cre_megacoMessage(Mess).
 
 
 %%
@@ -3633,9 +3746,7 @@ straa_notify_request_msg(Mid, TransId, Rid, TermId, Cid) ->
 %%
 
 straa_err_desc(T) ->
-    EC = ?megaco_internal_gateway_error,
-    ET = lists:flatten(io_lib:format("~w",[T])),
-    #'ErrorDescriptor'{errorCode = EC, errorText = ET}.
+    cre_ErrDesc(T).
 
 
 
@@ -3655,8 +3766,8 @@ multi_trans_req_and_ack_timeout(Config) when is_list(Config) ->
     MgcNode = make_node_name(mgc),
     MgNode  = make_node_name(mg),
     d("start nodes: "
-      "~n   MgcNode: ~p"
-      "~n   MgNode:  ~p", 
+      "~n      MGC Node: ~p"
+      "~n      MG Node:  ~p", 
       [MgcNode, MgNode]),
     ok = megaco_test_lib:start_nodes([MgcNode, MgNode], ?FILE, ?LINE),
 
@@ -3673,8 +3784,15 @@ multi_trans_req_and_ack_timeout(Config) when is_list(Config) ->
     d("[MGC] start the simulation"),
     {ok, MgcId} = megaco_test_megaco_generator:exec(Mgc, MgcEvSeq),
 
-    i("wait some time before starting the MG simulator"),
-    sleep(1000),
+    %% i("wait some time before starting the MG simulator"),
+    %% sleep(1000),
+
+    i("await MGC ready announcement"),
+    receive
+        announce_mgc ->
+            i("received MGC ready announcement"),
+            ok
+    end,
 
     d("[MG] start the simulator (generator)"),
     {ok, Mg} = megaco_test_megaco_generator:start_link("MG", MgNode),
@@ -3731,6 +3849,7 @@ multi_trans_req_and_ack_timeout(Config) when is_list(Config) ->
 -endif.
 
 mtrtaat_mgc_event_sequence(text, tcp) ->
+    CTRL = self(),
     Mid = {deviceName,"ctrl"},
     RI = [
 	  {port,             2944},
@@ -3743,11 +3862,6 @@ mtrtaat_mgc_event_sequence(text, tcp) ->
     NotifyReqVerify        = ?mtrtaat_mgc_verify_notify_req_fun(),
     AckVerify              = ?mtrtaat_mgc_verify_ack_fun(), 
     DiscoVerify            = ?mtrtaat_mgc_verify_handle_disconnect_fun(), 
-%%     ConnectVerify          = fun mtrtaat_mgc_verify_handle_connect/1,
-%%     ServiceChangeReqVerify = mtrtaat_mgc_verify_service_change_req_fun(Mid),
-%%     NotifyReqVerify        = mtrtaat_mgc_verify_notify_request_fun(),
-%%     AckVerify              = fun mtrtaat_mgc_verify_ack/1, 
-%%     DiscoVerify            = fun mtrtaat_mgc_verify_handle_disconnect/1,
     EvSeq = [
 	     {debug, true},
 	     {megaco_trace, disable},
@@ -3755,6 +3869,10 @@ mtrtaat_mgc_event_sequence(text, tcp) ->
 	     {megaco_start_user, Mid, RI, []},
 	     start_transport,
 	     listen,
+
+             %% ANNOUNCE READY
+             {trigger, fun() -> CTRL ! announce_mgc end}, 
+
 	     {megaco_callback, handle_connect,       ConnectVerify},
 	     {megaco_callback, handle_trans_request, ServiceChangeReqVerify},
 	     {megaco_callback, handle_trans_request, NotifyReqVerify},
@@ -3925,26 +4043,26 @@ mtrtaat_mgc_service_change_reply_ar(Mid, Cid) ->
     CR    = cre_cmdReply(SCR),
     cre_actionReply(Cid, [CR]).
 
-mtrtaat_mgc_service_change_reply_msg(Mid, TransId, Cid) ->
-    AR    = mtrtaat_mgc_service_change_reply_ar(Mid, Cid),
-    TRes  = cre_transResult([AR]),
-    TR    = cre_transReply(TransId, TRes),
-    Trans = cre_transaction(TR),
-    Mess  = cre_message(?VERSION, Mid, cre_transactions([Trans])),
-    cre_megacoMessage(Mess).
+%% mtrtaat_mgc_service_change_reply_msg(Mid, TransId, Cid) ->
+%%     AR    = mtrtaat_mgc_service_change_reply_ar(Mid, Cid),
+%%     TRes  = cre_transResult([AR]),
+%%     TR    = cre_transReply(TransId, TRes),
+%%     Trans = cre_transaction(TR),
+%%     Mess  = cre_message(?VERSION, Mid, cre_transactions([Trans])),
+%%     cre_megacoMessage(Mess).
 
 mtrtaat_mgc_notify_reply_ar(Cid, TermId) ->
     NR    = cre_notifyReply([TermId]),
     CR    = cre_cmdReply(NR),
     cre_actionReply(Cid, [CR]).
 
-mtrtaat_mgc_notify_reply(Mid, TransId, Cid, TermId) ->
-    AR    = mtrtaat_mgc_notify_reply_ar(Cid, TermId),
-    TRes  = cre_transResult([AR]),
-    TR    = cre_transReply(TransId, TRes),
-    Trans = cre_transaction(TR),
-    Mess  = cre_message(?VERSION, Mid, cre_transactions([Trans])),
-    cre_megacoMessage(Mess).
+%% mtrtaat_mgc_notify_reply(Mid, TransId, Cid, TermId) ->
+%%     AR    = mtrtaat_mgc_notify_reply_ar(Cid, TermId),
+%%     TRes  = cre_transResult([AR]),
+%%     TR    = cre_transReply(TransId, TRes),
+%%     Trans = cre_transaction(TR),
+%%     Mess  = cre_message(?VERSION, Mid, cre_transactions([Trans])),
+%%     cre_megacoMessage(Mess).
 
 
 %%
@@ -3982,9 +4100,6 @@ mtrtaat_mg_event_sequence(text, tcp) ->
     ConnectVerify            = ?mtrtaat_mg_verify_handle_connect_fun(), 
     ServiceChangeReplyVerify = ?mtrtaat_mg_verify_service_change_reply_fun(), 
     NotifyReplyVerify        = ?mtrtaat_mg_verify_notify_reply_fun(), 
-%%     ConnectVerify            = fun mtrtaat_mg_verify_handle_connect/1,
-%%     ServiceChangeReplyVerify = fun mtrtaat_mg_verify_service_change_reply/1,
-%%     NotifyReplyVerify        = fun mtrtaat_mg_verify_notify_reply/1, 
     EvSeq = [
 	     {debug, true},
 	     megaco_start,
@@ -4097,12 +4212,12 @@ mtrtaat_mg_service_change_request_ar(_Mid, Cid) ->
     CR    = cre_cmdReq(CMD),
     cre_actionReq(Cid, [CR]).
 
-mtrtaat_mg_service_change_request_msg(Mid, TransId, Cid) ->
-    AR    = mtrtaat_mg_service_change_request_ar(Mid, Cid),
-    TR    = cre_transReq(TransId, [AR]),
-    Trans = cre_transaction(TR),
-    Mess  = cre_message(?VERSION, Mid, cre_transactions([Trans])),
-    cre_megacoMessage(Mess).
+%% mtrtaat_mg_service_change_request_msg(Mid, TransId, Cid) ->
+%%     AR    = mtrtaat_mg_service_change_request_ar(Mid, Cid),
+%%     TR    = cre_transReq(TransId, [AR]),
+%%     Trans = cre_transaction(TR),
+%%     Mess  = cre_message(?VERSION, Mid, cre_transactions([Trans])),
+%%     cre_megacoMessage(Mess).
 
 mtrtaat_mg_notify_request_ar(Rid, Tid, Cid) ->
     TT      = cre_timeNotation("19990729", "22000000"),
@@ -4113,12 +4228,12 @@ mtrtaat_mg_notify_request_ar(Rid, Tid, Cid) ->
     CR      = cre_cmdReq(CMD),
     cre_actionReq(Cid, [CR]).
 
-mtrtaat_notify_request_msg(Mid, TransId, Rid, TermId, Cid) ->
-    AR      = mtrtaat_mg_notify_request_ar(Rid, TermId, Cid),
-    TR      = cre_transReq(TransId, [AR]),
-    Trans   = cre_transaction(TR),
-    Mess    = cre_message(?VERSION, Mid, cre_transactions([Trans])),
-    cre_megacoMessage(Mess).
+%% mtrtaat_notify_request_msg(Mid, TransId, Rid, TermId, Cid) ->
+%%     AR      = mtrtaat_mg_notify_request_ar(Rid, TermId, Cid),
+%%     TR      = cre_transReq(TransId, [AR]),
+%%     Trans   = cre_transaction(TR),
+%%     Mess    = cre_message(?VERSION, Mid, cre_transactions([Trans])),
+%%     cre_megacoMessage(Mess).
 
 
 %%
@@ -4126,9 +4241,7 @@ mtrtaat_notify_request_msg(Mid, TransId, Rid, TermId, Cid) ->
 %%
 
 mtrtaat_err_desc(T) ->
-    EC = ?megaco_internal_gateway_error,
-    ET = lists:flatten(io_lib:format("~w",[T])),
-    #'ErrorDescriptor'{errorCode = EC, errorText = ET}.
+    cre_ErrDesc(T).
 
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -4146,8 +4259,8 @@ multi_trans_req_and_ack_ackmaxcount(Config) when is_list(Config) ->
     MgcNode = make_node_name(mgc),
     MgNode  = make_node_name(mg),
     d("start nodes: "
-      "~n   MgcNode: ~p"
-      "~n   MgNode:  ~p", 
+      "~n      MGC Node: ~p"
+      "~n      MG Node:  ~p", 
       [MgcNode, MgNode]),
     ok = megaco_test_lib:start_nodes([MgcNode, MgNode], ?FILE, ?LINE),
 
@@ -4164,8 +4277,15 @@ multi_trans_req_and_ack_ackmaxcount(Config) when is_list(Config) ->
     d("[MGC] start the simulation"),
     {ok, MgcId} = megaco_test_megaco_generator:exec(Mgc, MgcEvSeq),
 
-    i("wait some time before starting the MG simulator"),
-    sleep(1000),
+    %% i("wait some time before starting the MG simulator"),
+    %% sleep(1000),
+
+    i("await MGC ready announcement"),
+    receive
+        announce_mgc ->
+            i("received MGC ready announcement"),
+            ok
+    end,
 
     d("[MG] start the simulator (generator)"),
     {ok, Mg} = megaco_test_megaco_generator:start_link("MG", MgNode),
@@ -4222,6 +4342,7 @@ multi_trans_req_and_ack_ackmaxcount(Config) when is_list(Config) ->
 -endif.
 
 mtrtaaamc_mgc_event_sequence(text, tcp) ->
+    CTRL = self(),
     Mid = {deviceName,"ctrl"},
     RI = [
 	  {port,             2944},
@@ -4234,11 +4355,6 @@ mtrtaaamc_mgc_event_sequence(text, tcp) ->
     NotifyReqVerify        = ?mtrtaaamc_mgc_verify_notify_req_fun(),
     AckVerify              = ?mtrtaaamc_mgc_verify_ack_fun(), 
     DiscoVerify            = ?mtrtaaamc_mgc_verify_handle_disconnect_fun(), 
-%%     ConnectVerify          = fun mtrtaaamc_mgc_verify_handle_connect/1,
-%%     ServiceChangeReqVerify = mtrtaaamc_mgc_verify_service_change_req_fun(Mid),
-%%     NotifyReqVerify        = mtrtaaamc_mgc_verify_notify_request_fun(),
-%%     AckVerify              = fun mtrtaaamc_mgc_verify_ack/1, 
-%%     DiscoVerify            = fun mtrtaaamc_mgc_verify_handle_disconnect/1,
     EvSeq = [
 	     {debug, true},
 	     {megaco_trace, disable},
@@ -4246,6 +4362,10 @@ mtrtaaamc_mgc_event_sequence(text, tcp) ->
 	     {megaco_start_user, Mid, RI, []},
 	     start_transport,
 	     listen,
+
+             %% ANNOUNCE READY
+             {trigger, fun() -> CTRL ! announce_mgc end}, 
+
 	     {megaco_callback, handle_connect,       ConnectVerify},
 	     {megaco_callback, handle_trans_request, ServiceChangeReqVerify},
 	     {megaco_callback, handle_trans_request, NotifyReqVerify},
@@ -4421,26 +4541,26 @@ mtrtaaamc_mgc_service_change_reply_ar(Mid, Cid) ->
     CR    = cre_cmdReply(SCR),
     cre_actionReply(Cid, [CR]).
 
-mtrtaaamc_mgc_service_change_reply_msg(Mid, TransId, Cid) ->
-    AR    = mtrtaaamc_mgc_service_change_reply_ar(Mid, Cid),
-    TRes  = cre_transResult([AR]),
-    TR    = cre_transReply(TransId, TRes),
-    Trans = cre_transaction(TR),
-    Mess  = cre_message(?VERSION, Mid, cre_transactions([Trans])),
-    cre_megacoMessage(Mess).
+%% mtrtaaamc_mgc_service_change_reply_msg(Mid, TransId, Cid) ->
+%%     AR    = mtrtaaamc_mgc_service_change_reply_ar(Mid, Cid),
+%%     TRes  = cre_transResult([AR]),
+%%     TR    = cre_transReply(TransId, TRes),
+%%     Trans = cre_transaction(TR),
+%%     Mess  = cre_message(?VERSION, Mid, cre_transactions([Trans])),
+%%     cre_megacoMessage(Mess).
 
 mtrtaaamc_mgc_notify_reply_ar(Cid, TermId) ->
     NR    = cre_notifyReply([TermId]),
     CR    = cre_cmdReply(NR),
     cre_actionReply(Cid, [CR]).
 
-mtrtaaamc_mgc_notify_reply(Mid, TransId, Cid, TermId) ->
-    AR    = mtrtaaamc_mgc_notify_reply_ar(Cid, TermId),
-    TRes  = cre_transResult([AR]),
-    TR    = cre_transReply(TransId, TRes),
-    Trans = cre_transaction(TR),
-    Mess  = cre_message(?VERSION, Mid, cre_transactions([Trans])),
-    cre_megacoMessage(Mess).
+%% mtrtaaamc_mgc_notify_reply(Mid, TransId, Cid, TermId) ->
+%%     AR    = mtrtaaamc_mgc_notify_reply_ar(Cid, TermId),
+%%     TRes  = cre_transResult([AR]),
+%%     TR    = cre_transReply(TransId, TRes),
+%%     Trans = cre_transaction(TR),
+%%     Mess  = cre_message(?VERSION, Mid, cre_transactions([Trans])),
+%%     cre_megacoMessage(Mess).
 
 
 %%
@@ -4478,9 +4598,6 @@ mtrtaaamc_mg_event_sequence(text, tcp) ->
     ConnectVerify            = ?mtrtaaamc_mg_verify_handle_connect_fun(), 
     ServiceChangeReplyVerify = ?mtrtaaamc_mg_verify_service_change_reply_fun(), 
     NotifyReplyVerify        = ?mtrtaaamc_mg_verify_notify_reply_fun(), 
-%%     ConnectVerify            = fun mtrtaaamc_mg_verify_handle_connect/1,
-%%     ServiceChangeReplyVerify = fun mtrtaaamc_mg_verify_service_change_reply/1,
-%%     NotifyReplyVerify        = fun mtrtaaamc_mg_verify_notify_reply/1, 
     EvSeq = [
 	     {debug, true},
 	     megaco_start,
@@ -4595,12 +4712,12 @@ mtrtaaamc_mg_service_change_request_ar(_Mid, Cid) ->
     CR    = cre_cmdReq(CMD),
     cre_actionReq(Cid, [CR]).
 
-mtrtaaamc_mg_service_change_request_msg(Mid, TransId, Cid) ->
-    AR    = mtrtaaamc_mg_service_change_request_ar(Mid, Cid),
-    TR    = cre_transReq(TransId, [AR]),
-    Trans = cre_transaction(TR),
-    Mess  = cre_message(?VERSION, Mid, cre_transactions([Trans])),
-    cre_megacoMessage(Mess).
+%% mtrtaaamc_mg_service_change_request_msg(Mid, TransId, Cid) ->
+%%     AR    = mtrtaaamc_mg_service_change_request_ar(Mid, Cid),
+%%     TR    = cre_transReq(TransId, [AR]),
+%%     Trans = cre_transaction(TR),
+%%     Mess  = cre_message(?VERSION, Mid, cre_transactions([Trans])),
+%%     cre_megacoMessage(Mess).
 
 mtrtaaamc_mg_notify_request_ar(Rid, Tid, Cid) ->
     TT      = cre_timeNotation("19990729", "22000000"),
@@ -4611,12 +4728,12 @@ mtrtaaamc_mg_notify_request_ar(Rid, Tid, Cid) ->
     CR      = cre_cmdReq(CMD),
     cre_actionReq(Cid, [CR]).
 
-mtrtaaamc_notify_request_msg(Mid, TransId, Rid, TermId, Cid) ->
-    AR      = mtrtaaamc_mg_notify_request_ar(Rid, TermId, Cid),
-    TR      = cre_transReq(TransId, [AR]),
-    Trans   = cre_transaction(TR),
-    Mess    = cre_message(?VERSION, Mid, cre_transactions([Trans])),
-    cre_megacoMessage(Mess).
+%% mtrtaaamc_notify_request_msg(Mid, TransId, Rid, TermId, Cid) ->
+%%     AR      = mtrtaaamc_mg_notify_request_ar(Rid, TermId, Cid),
+%%     TR      = cre_transReq(TransId, [AR]),
+%%     Trans   = cre_transaction(TR),
+%%     Mess    = cre_message(?VERSION, Mid, cre_transactions([Trans])),
+%%     cre_megacoMessage(Mess).
 
 
 %%
@@ -4624,9 +4741,7 @@ mtrtaaamc_notify_request_msg(Mid, TransId, Rid, TermId, Cid) ->
 %%
 
 mtrtaaamc_err_desc(T) ->
-    EC = ?megaco_internal_gateway_error,
-    ET = lists:flatten(io_lib:format("~w",[T])),
-    #'ErrorDescriptor'{errorCode = EC, errorText = ET}.
+    cre_ErrDesc(T).
 
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -4644,8 +4759,8 @@ multi_trans_req_and_ack_reqmaxcount(Config) when is_list(Config) ->
     MgcNode = make_node_name(mgc),
     MgNode  = make_node_name(mg),
     d("start nodes: "
-      "~n   MgcNode: ~p"
-      "~n   MgNode:  ~p", 
+      "~n      MGC Node: ~p"
+      "~n      MG Node:  ~p", 
       [MgcNode, MgNode]),
     ok = megaco_test_lib:start_nodes([MgcNode, MgNode], ?FILE, ?LINE),
 
@@ -4662,8 +4777,15 @@ multi_trans_req_and_ack_reqmaxcount(Config) when is_list(Config) ->
     d("[MGC] start the simulation"),
    {ok, MgcId} =  megaco_test_megaco_generator:exec(Mgc, MgcEvSeq),
 
-    i("wait some time before starting the MG simulator"),
-    sleep(1000),
+    %% i("wait some time before starting the MG simulator"),
+    %% sleep(1000),
+
+    i("await MGC ready announcement"),
+    receive
+        announce_mgc ->
+            i("received MGC ready announcement"),
+            ok
+    end,
 
     d("[MG] start the simulator (generator)"),
     {ok, Mg} = megaco_test_megaco_generator:start_link("MG", MgNode),
@@ -4720,6 +4842,7 @@ multi_trans_req_and_ack_reqmaxcount(Config) when is_list(Config) ->
 -endif.
 
 mtrtaarac_mgc_event_sequence(text, tcp) ->
+    CTRL = self(),
     Mid = {deviceName,"ctrl"},
     RI = [
 	  {port,             2944},
@@ -4732,11 +4855,6 @@ mtrtaarac_mgc_event_sequence(text, tcp) ->
     NotifyReqVerify        = ?mtrtaarac_mgc_verify_notify_req_fun(),
     AckVerify              = ?mtrtaarac_mgc_verify_ack_fun(), 
     DiscoVerify            = ?mtrtaarac_mgc_verify_handle_disconnect_fun(), 
-%%     ConnectVerify          = fun mtrtaarac_mgc_verify_handle_connect/1,
-%%     ServiceChangeReqVerify = mtrtaarac_mgc_verify_service_change_req_fun(Mid),
-%%     NotifyReqVerify        = mtrtaarac_mgc_verify_notify_request_fun(),
-%%     AckVerify              = fun mtrtaarac_mgc_verify_ack/1, 
-%%     DiscoVerify            = fun mtrtaarac_mgc_verify_handle_disconnect/1,
     EvSeq = [
 	     {debug, true},
 	     {megaco_trace, disable},
@@ -4744,6 +4862,10 @@ mtrtaarac_mgc_event_sequence(text, tcp) ->
 	     {megaco_start_user, Mid, RI, []},
 	     start_transport,
 	     listen,
+
+             %% ANNOUNCE READY
+             {trigger, fun() -> CTRL ! announce_mgc end}, 
+
 	     {megaco_callback, handle_connect,       ConnectVerify},
 	     {megaco_callback, handle_trans_request, ServiceChangeReqVerify},
 	     {megaco_callback, handle_trans_request, NotifyReqVerify},
@@ -4918,26 +5040,26 @@ mtrtaarac_mgc_service_change_reply_ar(Mid, Cid) ->
     CR    = cre_cmdReply(SCR),
     cre_actionReply(Cid, [CR]).
 
-mtrtaarac_mgc_service_change_reply_msg(Mid, TransId, Cid) ->
-    AR    = mtrtaarac_mgc_service_change_reply_ar(Mid, Cid),
-    TRes  = cre_transResult([AR]),
-    TR    = cre_transReply(TransId, TRes),
-    Trans = cre_transaction(TR),
-    Mess  = cre_message(?VERSION, Mid, cre_transactions([Trans])),
-    cre_megacoMessage(Mess).
+%% mtrtaarac_mgc_service_change_reply_msg(Mid, TransId, Cid) ->
+%%     AR    = mtrtaarac_mgc_service_change_reply_ar(Mid, Cid),
+%%     TRes  = cre_transResult([AR]),
+%%     TR    = cre_transReply(TransId, TRes),
+%%     Trans = cre_transaction(TR),
+%%     Mess  = cre_message(?VERSION, Mid, cre_transactions([Trans])),
+%%     cre_megacoMessage(Mess).
 
 mtrtaarac_mgc_notify_reply_ar(Cid, TermId) ->
     NR    = cre_notifyReply([TermId]),
     CR    = cre_cmdReply(NR),
     cre_actionReply(Cid, [CR]).
 
-mtrtaarac_mgc_notify_reply(Mid, TransId, Cid, TermId) ->
-    AR    = mtrtaarac_mgc_notify_reply_ar(Cid, TermId),
-    TRes  = cre_transResult([AR]),
-    TR    = cre_transReply(TransId, TRes),
-    Trans = cre_transaction(TR),
-    Mess  = cre_message(?VERSION, Mid, cre_transactions([Trans])),
-    cre_megacoMessage(Mess).
+%% mtrtaarac_mgc_notify_reply(Mid, TransId, Cid, TermId) ->
+%%     AR    = mtrtaarac_mgc_notify_reply_ar(Cid, TermId),
+%%     TRes  = cre_transResult([AR]),
+%%     TR    = cre_transReply(TransId, TRes),
+%%     Trans = cre_transaction(TR),
+%%     Mess  = cre_message(?VERSION, Mid, cre_transactions([Trans])),
+%%     cre_megacoMessage(Mess).
 
 
 %%
@@ -4975,9 +5097,6 @@ mtrtaarac_mg_event_sequence(text, tcp) ->
     ConnectVerify            = ?mtrtaarac_mg_verify_handle_connect_fun(), 
     ServiceChangeReplyVerify = ?mtrtaarac_mg_verify_service_change_reply_fun(), 
     NotifyReplyVerify        = ?mtrtaarac_mg_verify_notify_reply_fun(), 
-%%     ConnectVerify            = fun mtrtaarac_mg_verify_handle_connect/1,
-%%     ServiceChangeReplyVerify = fun mtrtaarac_mg_verify_service_change_reply/1,
-%%     NotifyReplyVerify        = fun mtrtaarac_mg_verify_notify_reply/1, 
     EvSeq = [
 	     {debug, true},
 	     megaco_start,
@@ -5092,12 +5211,12 @@ mtrtaarac_mg_service_change_request_ar(_Mid, Cid) ->
     CR    = cre_cmdReq(CMD),
     cre_actionReq(Cid, [CR]).
 
-mtrtaarac_mg_service_change_request_msg(Mid, TransId, Cid) ->
-    AR    = mtrtaarac_mg_service_change_request_ar(Mid, Cid),
-    TR    = cre_transReq(TransId, [AR]),
-    Trans = cre_transaction(TR),
-    Mess  = cre_message(?VERSION, Mid, cre_transactions([Trans])),
-    cre_megacoMessage(Mess).
+%% mtrtaarac_mg_service_change_request_msg(Mid, TransId, Cid) ->
+%%     AR    = mtrtaarac_mg_service_change_request_ar(Mid, Cid),
+%%     TR    = cre_transReq(TransId, [AR]),
+%%     Trans = cre_transaction(TR),
+%%     Mess  = cre_message(?VERSION, Mid, cre_transactions([Trans])),
+%%     cre_megacoMessage(Mess).
 
 mtrtaarac_mg_notify_request_ar(Rid, Tid, Cid) ->
     TT      = cre_timeNotation("19990729", "22000000"),
@@ -5108,12 +5227,12 @@ mtrtaarac_mg_notify_request_ar(Rid, Tid, Cid) ->
     CR      = cre_cmdReq(CMD),
     cre_actionReq(Cid, [CR]).
 
-mtrtaarac_notify_request_msg(Mid, TransId, Rid, TermId, Cid) ->
-    AR      = mtrtaarac_mg_notify_request_ar(Rid, TermId, Cid),
-    TR      = cre_transReq(TransId, [AR]),
-    Trans   = cre_transaction(TR),
-    Mess    = cre_message(?VERSION, Mid, cre_transactions([Trans])),
-    cre_megacoMessage(Mess).
+%% mtrtaarac_notify_request_msg(Mid, TransId, Rid, TermId, Cid) ->
+%%     AR      = mtrtaarac_mg_notify_request_ar(Rid, TermId, Cid),
+%%     TR      = cre_transReq(TransId, [AR]),
+%%     Trans   = cre_transaction(TR),
+%%     Mess    = cre_message(?VERSION, Mid, cre_transactions([Trans])),
+%%     cre_megacoMessage(Mess).
 
 
 %%
@@ -5141,8 +5260,8 @@ multi_trans_req_and_ack_maxsize1(Config) when is_list(Config) ->
     MgcNode = make_node_name(mgc),
     MgNode  = make_node_name(mg),
     d("start nodes: "
-      "~n   MgcNode: ~p"
-      "~n   MgNode:  ~p", 
+      "~n      MGC Node: ~p"
+      "~n      MG Node:  ~p", 
       [MgcNode, MgNode]),
     ok = megaco_test_lib:start_nodes([MgcNode, MgNode], ?FILE, ?LINE),
 
@@ -5159,8 +5278,15 @@ multi_trans_req_and_ack_maxsize1(Config) when is_list(Config) ->
     d("[MGC] start the simulation"),
     {ok, MgcId} = megaco_test_megaco_generator:exec(Mgc, MgcEvSeq),
 
-    i("wait some time before starting the MG simulator"),
-    sleep(1000),
+    %% i("wait some time before starting the MG simulator"),
+    %% sleep(1000),
+
+    i("await MGC ready announcement"),
+    receive
+        announce_mgc ->
+            i("received MGC ready announcement"),
+            ok
+    end,
 
     d("[MG] start the simulator (generator)"),
     {ok, Mg} = megaco_test_megaco_generator:start_link("MG", MgNode),
@@ -5217,6 +5343,7 @@ multi_trans_req_and_ack_maxsize1(Config) when is_list(Config) ->
 -endif.
 
 mtrtaams1_mgc_event_sequence(text, tcp) ->
+    CTRL = self(),
     Mid = {deviceName,"ctrl"},
     RI = [
 	  {port,             2944},
@@ -5229,11 +5356,6 @@ mtrtaams1_mgc_event_sequence(text, tcp) ->
     NotifyReqVerify        = ?mtrtaams1_mgc_verify_notify_req_fun(),
     AckVerify              = ?mtrtaams1_mgc_verify_ack_fun(), 
     DiscoVerify            = ?mtrtaams1_mgc_verify_handle_disconnect_fun(), 
-%%     ConnectVerify          = fun mtrtaams1_mgc_verify_handle_connect/1,
-%%     ServiceChangeReqVerify = mtrtaams1_mgc_verify_service_change_req_fun(Mid),
-%%     NotifyReqVerify        = mtrtaams1_mgc_verify_notify_request_fun(),
-%%     AckVerify              = fun mtrtaams1_mgc_verify_ack/1, 
-%%     DiscoVerify            = fun mtrtaams1_mgc_verify_handle_disconnect/1,
     EvSeq = [
 	     {debug, true},
 	     {megaco_trace, disable},
@@ -5241,6 +5363,10 @@ mtrtaams1_mgc_event_sequence(text, tcp) ->
 	     {megaco_start_user, Mid, RI, []},
 	     start_transport,
 	     listen,
+
+             %% ANNOUNCE READY
+             {trigger, fun() -> CTRL ! announce_mgc end}, 
+
 	     {megaco_callback, handle_connect,       ConnectVerify},
 	     {megaco_callback, handle_trans_request, ServiceChangeReqVerify},
 	     {megaco_callback, handle_trans_request, NotifyReqVerify},
@@ -5415,26 +5541,26 @@ mtrtaams1_mgc_service_change_reply_ar(Mid, Cid) ->
     CR    = cre_cmdReply(SCR),
     cre_actionReply(Cid, [CR]).
 
-mtrtaams1_mgc_service_change_reply_msg(Mid, TransId, Cid) ->
-    AR    = mtrtaams1_mgc_service_change_reply_ar(Mid, Cid),
-    TRes  = cre_transResult([AR]),
-    TR    = cre_transReply(TransId, TRes),
-    Trans = cre_transaction(TR),
-    Mess  = cre_message(?VERSION, Mid, cre_transactions([Trans])),
-    cre_megacoMessage(Mess).
+%% mtrtaams1_mgc_service_change_reply_msg(Mid, TransId, Cid) ->
+%%     AR    = mtrtaams1_mgc_service_change_reply_ar(Mid, Cid),
+%%     TRes  = cre_transResult([AR]),
+%%     TR    = cre_transReply(TransId, TRes),
+%%     Trans = cre_transaction(TR),
+%%     Mess  = cre_message(?VERSION, Mid, cre_transactions([Trans])),
+%%     cre_megacoMessage(Mess).
 
 mtrtaams1_mgc_notify_reply_ar(Cid, TermId) ->
     NR    = cre_notifyReply([TermId]),
     CR    = cre_cmdReply(NR),
     cre_actionReply(Cid, [CR]).
 
-mtrtaams1_mgc_notify_reply(Mid, TransId, Cid, TermId) ->
-    AR    = mtrtaams1_mgc_notify_reply_ar(Cid, TermId),
-    TRes  = cre_transResult([AR]),
-    TR    = cre_transReply(TransId, TRes),
-    Trans = cre_transaction(TR),
-    Mess  = cre_message(?VERSION, Mid, cre_transactions([Trans])),
-    cre_megacoMessage(Mess).
+%% mtrtaams1_mgc_notify_reply(Mid, TransId, Cid, TermId) ->
+%%     AR    = mtrtaams1_mgc_notify_reply_ar(Cid, TermId),
+%%     TRes  = cre_transResult([AR]),
+%%     TR    = cre_transReply(TransId, TRes),
+%%     Trans = cre_transaction(TR),
+%%     Mess  = cre_message(?VERSION, Mid, cre_transactions([Trans])),
+%%     cre_megacoMessage(Mess).
 
 
 %%
@@ -5472,9 +5598,6 @@ mtrtaams1_mg_event_sequence(text, tcp) ->
     ConnectVerify            = ?mtrtaams1_mg_verify_handle_connect_fun(), 
     ServiceChangeReplyVerify = ?mtrtaams1_mg_verify_service_change_reply_fun(), 
     NotifyReplyVerify        = ?mtrtaams1_mg_verify_notify_reply_fun(), 
-%%     ConnectVerify            = fun mtrtaams1_mg_verify_handle_connect/1,
-%%     ServiceChangeReplyVerify = fun mtrtaams1_mg_verify_service_change_reply/1,
-%%     NotifyReplyVerify        = fun mtrtaams1_mg_verify_notify_reply/1, 
     EvSeq = [
 	     {debug, true},
 	     megaco_start,
@@ -5588,12 +5711,12 @@ mtrtaams1_mg_service_change_request_ar(_Mid, Cid) ->
     CR    = cre_cmdReq(CMD),
     cre_actionReq(Cid, [CR]).
 
-mtrtaams1_mg_service_change_request_msg(Mid, TransId, Cid) ->
-    AR    = mtrtaams1_mg_service_change_request_ar(Mid, Cid),
-    TR    = cre_transReq(TransId, [AR]),
-    Trans = cre_transaction(TR),
-    Mess  = cre_message(?VERSION, Mid, cre_transactions([Trans])),
-    cre_megacoMessage(Mess).
+%% mtrtaams1_mg_service_change_request_msg(Mid, TransId, Cid) ->
+%%     AR    = mtrtaams1_mg_service_change_request_ar(Mid, Cid),
+%%     TR    = cre_transReq(TransId, [AR]),
+%%     Trans = cre_transaction(TR),
+%%     Mess  = cre_message(?VERSION, Mid, cre_transactions([Trans])),
+%%     cre_megacoMessage(Mess).
 
 mtrtaams1_mg_notify_request_ar(Rid, Tid, Cid) ->
     TT      = cre_timeNotation("19990729", "22000000"),
@@ -5604,12 +5727,12 @@ mtrtaams1_mg_notify_request_ar(Rid, Tid, Cid) ->
     CR      = cre_cmdReq(CMD),
     cre_actionReq(Cid, [CR]).
 
-mtrtaams1_notify_request_msg(Mid, TransId, Rid, TermId, Cid) ->
-    AR      = mtrtaams1_mg_notify_request_ar(Rid, TermId, Cid),
-    TR      = cre_transReq(TransId, [AR]),
-    Trans   = cre_transaction(TR),
-    Mess    = cre_message(?VERSION, Mid, cre_transactions([Trans])),
-    cre_megacoMessage(Mess).
+%% mtrtaams1_notify_request_msg(Mid, TransId, Rid, TermId, Cid) ->
+%%     AR      = mtrtaams1_mg_notify_request_ar(Rid, TermId, Cid),
+%%     TR      = cre_transReq(TransId, [AR]),
+%%     Trans   = cre_transaction(TR),
+%%     Mess    = cre_message(?VERSION, Mid, cre_transactions([Trans])),
+%%     cre_megacoMessage(Mess).
 
 
 %%
@@ -5617,9 +5740,7 @@ mtrtaams1_notify_request_msg(Mid, TransId, Rid, TermId, Cid) ->
 %%
 
 mtrtaams1_err_desc(T) ->
-    EC = ?megaco_internal_gateway_error,
-    ET = lists:flatten(io_lib:format("~w",[T])),
-    #'ErrorDescriptor'{errorCode = EC, errorText = ET}.
+    cre_ErrDesc(T).
 
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -5637,8 +5758,8 @@ multi_trans_req_and_ack_maxsize2(Config) when is_list(Config) ->
     MgcNode = make_node_name(mgc),
     MgNode  = make_node_name(mg),
     d("start nodes: "
-      "~n   MgcNode: ~p"
-      "~n   MgNode:  ~p", 
+      "~n      MGC Node: ~p"
+      "~n      MG Node:  ~p", 
       [MgcNode, MgNode]),
     ok = megaco_test_lib:start_nodes([MgcNode, MgNode], ?FILE, ?LINE),
 
@@ -5655,8 +5776,15 @@ multi_trans_req_and_ack_maxsize2(Config) when is_list(Config) ->
     d("[MGC] start the simulation"),
     {ok, MgcId} = megaco_test_megaco_generator:exec(Mgc, MgcEvSeq),
 
-    i("wait some time before starting the MG simulator"),
-    sleep(1000),
+    %% i("wait some time before starting the MG simulator"),
+    %% sleep(1000),
+
+    i("await MGC ready announcement"),
+    receive
+        announce_mgc ->
+            i("received MGC ready announcement"),
+            ok
+    end,
 
     d("[MG] start the simulator (generator)"),
     {ok, Mg} = megaco_test_megaco_generator:start_link("MG", MgNode),
@@ -5713,6 +5841,7 @@ multi_trans_req_and_ack_maxsize2(Config) when is_list(Config) ->
 -endif.
 
 mtrtaams2_mgc_event_sequence(text, tcp) ->
+    CTRL = self(),
     Mid = {deviceName,"ctrl"},
     RI = [
 	  {port,             2944},
@@ -5725,11 +5854,6 @@ mtrtaams2_mgc_event_sequence(text, tcp) ->
     NotifyReqVerify        = ?mtrtaams2_mgc_verify_notify_req_fun(),
     AckVerify              = ?mtrtaams2_mgc_verify_ack_fun(), 
     DiscoVerify            = ?mtrtaams2_mgc_verify_handle_disconnect_fun(), 
-%%     ConnectVerify          = fun mtrtaams2_mgc_verify_handle_connect/1,
-%%     ServiceChangeReqVerify = mtrtaams2_mgc_verify_service_change_req_fun(Mid),
-%%     NotifyReqVerify        = mtrtaams2_mgc_verify_notify_request_fun(),
-%%     AckVerify              = fun mtrtaams2_mgc_verify_ack/1, 
-%%     DiscoVerify            = fun mtrtaams2_mgc_verify_handle_disconnect/1,
     EvSeq = [
 	     {debug, true},
 	     {megaco_trace, disable},
@@ -5737,6 +5861,10 @@ mtrtaams2_mgc_event_sequence(text, tcp) ->
 	     {megaco_start_user, Mid, RI, []},
 	     start_transport,
 	     {listen, [{serialize, true}]},
+
+             %% ANNOUNCE READY
+             {trigger, fun() -> CTRL ! announce_mgc end}, 
+
 	     {megaco_callback, handle_connect,       ConnectVerify},
 	     {megaco_callback, handle_trans_request, ServiceChangeReqVerify},
 	     {megaco_callback, handle_trans_request, NotifyReqVerify},
@@ -5914,13 +6042,13 @@ mtrtaams2_mgc_service_change_reply_ar(Mid, Cid) ->
     CR    = cre_cmdReply(SCR),
     cre_actionReply(Cid, [CR]).
 
-mtrtaams2_mgc_service_change_reply_msg(Mid, TransId, Cid) ->
-    AR    = mtrtaams2_mgc_service_change_reply_ar(Mid, Cid),
-    TRes  = cre_transResult([AR]),
-    TR    = cre_transReply(TransId, TRes),
-    Trans = cre_transaction(TR),
-    Mess  = cre_message(?VERSION, Mid, cre_transactions([Trans])),
-    cre_megacoMessage(Mess).
+%% mtrtaams2_mgc_service_change_reply_msg(Mid, TransId, Cid) ->
+%%     AR    = mtrtaams2_mgc_service_change_reply_ar(Mid, Cid),
+%%     TRes  = cre_transResult([AR]),
+%%     TR    = cre_transReply(TransId, TRes),
+%%     Trans = cre_transaction(TR),
+%%     Mess  = cre_message(?VERSION, Mid, cre_transactions([Trans])),
+%%     cre_megacoMessage(Mess).
 
 mtrtaams2_mgc_notify_reply_ar1(Cid, TermId) ->
     NR    = cre_notifyReply([TermId]),
@@ -5931,13 +6059,13 @@ mtrtaams2_mgc_notify_reply_ar2(Cid, Tids) ->
     CRs = [cre_cmdReply(cre_notifyReply([Tid])) || Tid <- Tids],
     cre_actionReply(Cid, CRs).
 
-mtrtaams2_mgc_notify_reply(Mid, TransId, Cid, TermId) ->
-    AR    = mtrtaams2_mgc_notify_reply_ar1(Cid, TermId),
-    TRes  = cre_transResult([AR]),
-    TR    = cre_transReply(TransId, TRes),
-    Trans = cre_transaction(TR),
-    Mess  = cre_message(?VERSION, Mid, cre_transactions([Trans])),
-    cre_megacoMessage(Mess).
+%% mtrtaams2_mgc_notify_reply(Mid, TransId, Cid, TermId) ->
+%%     AR    = mtrtaams2_mgc_notify_reply_ar1(Cid, TermId),
+%%     TRes  = cre_transResult([AR]),
+%%     TR    = cre_transReply(TransId, TRes),
+%%     Trans = cre_transaction(TR),
+%%     Mess  = cre_message(?VERSION, Mid, cre_transactions([Trans])),
+%%     cre_megacoMessage(Mess).
 
 
 %%
@@ -5978,9 +6106,6 @@ mtrtaams2_mg_event_sequence(text, tcp) ->
     ConnectVerify            = ?mtrtaams2_mg_verify_handle_connect_fun(), 
     ServiceChangeReplyVerify = ?mtrtaams2_mg_verify_service_change_reply_fun(), 
     NotifyReplyVerify        = ?mtrtaams2_mg_verify_notify_reply_fun(), 
-%%     ConnectVerify            = fun mtrtaams2_mg_verify_handle_connect/1,
-%%     ServiceChangeReplyVerify = fun mtrtaams2_mg_verify_service_change_reply/1,
-%%     NotifyReplyVerify        = fun mtrtaams2_mg_verify_notify_reply/1, 
     EvSeq = [
 	     {debug, true},
 	     megaco_start,
@@ -6092,12 +6217,12 @@ mtrtaams2_mg_service_change_request_ar(_Mid, Cid) ->
     CR    = cre_cmdReq(CMD),
     cre_actionReq(Cid, [CR]).
 
-mtrtaams2_mg_service_change_request_msg(Mid, TransId, Cid) ->
-    AR    = mtrtaams2_mg_service_change_request_ar(Mid, Cid),
-    TR    = cre_transReq(TransId, [AR]),
-    Trans = cre_transaction(TR),
-    Mess  = cre_message(?VERSION, Mid, cre_transactions([Trans])),
-    cre_megacoMessage(Mess).
+%% mtrtaams2_mg_service_change_request_msg(Mid, TransId, Cid) ->
+%%     AR    = mtrtaams2_mg_service_change_request_ar(Mid, Cid),
+%%     TR    = cre_transReq(TransId, [AR]),
+%%     Trans = cre_transaction(TR),
+%%     Mess  = cre_message(?VERSION, Mid, cre_transactions([Trans])),
+%%     cre_megacoMessage(Mess).
 
 mtrtaams2_mg_notify_request_ar1(Rid, Tid, Cid) ->
     TT      = cre_timeNotation("19990729", "22000000"),
@@ -6123,12 +6248,12 @@ mtrtaams2_mg_notify_request_ar2(Rid, Tid, Cid) ->
     CRs = [F(N) || N <- Ns],
     cre_actionReq(Cid, CRs).
 
-mtrtaams2_notify_request_msg(Mid, TransId, Rid, TermId, Cid) ->
-    AR      = mtrtaams2_mg_notify_request_ar1(Rid, TermId, Cid),
-    TR      = cre_transReq(TransId, [AR]),
-    Trans   = cre_transaction(TR),
-    Mess    = cre_message(?VERSION, Mid, cre_transactions([Trans])),
-    cre_megacoMessage(Mess).
+%% mtrtaams2_notify_request_msg(Mid, TransId, Rid, TermId, Cid) ->
+%%     AR      = mtrtaams2_mg_notify_request_ar1(Rid, TermId, Cid),
+%%     TR      = cre_transReq(TransId, [AR]),
+%%     Trans   = cre_transaction(TR),
+%%     Mess    = cre_message(?VERSION, Mid, cre_transactions([Trans])),
+%%     cre_megacoMessage(Mess).
 
 
 %%
@@ -6136,9 +6261,7 @@ mtrtaams2_notify_request_msg(Mid, TransId, Rid, TermId, Cid) ->
 %%
 
 mtrtaams2_err_desc(T) ->
-    EC = ?megaco_internal_gateway_error,
-    ET = lists:flatten(io_lib:format("~w",[T])),
-    #'ErrorDescriptor'{errorCode = EC, errorText = ET}.
+    cre_ErrDesc(T).
 
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -6176,8 +6299,8 @@ multi_trans_req_and_ack_and_pending(Config) when is_list(Config) ->
     MgcNode = make_node_name(mgc),
     MgNode  = make_node_name(mg),
     d("start nodes: "
-      "~n   MgcNode: ~p"
-      "~n   MgNode:  ~p", 
+      "~n      MGC Node: ~p"
+      "~n      MG Node:  ~p", 
       [MgcNode, MgNode]),
     ok = megaco_test_lib:start_nodes([MgcNode, MgNode], ?FILE, ?LINE),
 
@@ -6194,8 +6317,15 @@ multi_trans_req_and_ack_and_pending(Config) when is_list(Config) ->
     d("[MGC] start the simulation"),
     {ok, MgcId} = megaco_test_megaco_generator:exec(Mgc, MgcEvSeq),
 
-    i("wait some time before starting the MG simulator"),
-    sleep(1000),
+    %% i("wait some time before starting the MG simulator"),
+    %% sleep(1000),
+
+    i("await MGC ready announcement"),
+    receive
+        announce_mgc ->
+            i("received MGC ready announcement"),
+            ok
+    end,
 
     d("[MG] start the simulator (generator)"),
     {ok, Mg} = megaco_test_megaco_generator:start_link("MG", MgNode),
@@ -6256,6 +6386,7 @@ multi_trans_req_and_ack_and_pending(Config) when is_list(Config) ->
 -endif.
 
 mtraaap_mgc_event_sequence(text, tcp) ->
+    CTRL = self(),
     Mid = {deviceName,"ctrl"},
     RI = [
 	  {port,             2944},
@@ -6276,12 +6407,6 @@ mtraaap_mgc_event_sequence(text, tcp) ->
     NotifyReplyVerify      = ?mtraaap_mgc_verify_notify_reply_fun(), 
     AckVerify              = ?mtraaap_mgc_verify_ack_fun(), 
     DiscoVerify            = ?mtraaap_mgc_verify_handle_disconnect_fun(),
-%%     ConnectVerify          = fun mtraaap_mgc_verify_handle_connect/1,
-%%     ServiceChangeReqVerify = mtraaap_mgc_verify_service_change_req_fun(Mid),
-%%     NotifyReqVerify        = mtraaap_mgc_verify_notify_request_fun(),
-%%     NotifyReplyVerify      = fun mtraaap_mgc_verify_notify_reply/1, 
-%%     AckVerify              = fun mtraaap_mgc_verify_ack/1, 
-%%     DiscoVerify            = fun mtraaap_mgc_verify_handle_disconnect/1,
     EvSeq = [
 	     {debug, true},
 	     {megaco_trace, disable},
@@ -6289,6 +6414,10 @@ mtraaap_mgc_event_sequence(text, tcp) ->
 	     {megaco_start_user, Mid, RI, []},
 	     start_transport,
 	     listen,
+
+             %% ANNOUNCE READY
+             {trigger, fun() -> CTRL ! announce_mgc end}, 
+
 	     {megaco_callback, handle_connect,        ConnectVerify},
 	     {megaco_callback, handle_trans_request,  ServiceChangeReqVerify},
 	     {megaco_callback, handle_trans_request,  NotifyReqVerify},
@@ -6468,13 +6597,13 @@ mtraaap_mgc_service_change_reply_ar(Mid, Cid) ->
     CR    = cre_cmdReply(SCR),
     cre_actionReply(Cid, [CR]).
 
-mtraaap_mgc_service_change_reply_msg(Mid, TransId, Cid) ->
-    AR    = mtraaap_mgc_service_change_reply_ar(Mid, Cid),
-    TRes  = cre_transResult([AR]),
-    TR    = cre_transReply(TransId, TRes),
-    Trans = cre_transaction(TR),
-    Mess  = cre_message(?VERSION, Mid, cre_transactions([Trans])),
-    cre_megacoMessage(Mess).
+%% mtraaap_mgc_service_change_reply_msg(Mid, TransId, Cid) ->
+%%     AR    = mtraaap_mgc_service_change_reply_ar(Mid, Cid),
+%%     TRes  = cre_transResult([AR]),
+%%     TR    = cre_transReply(TransId, TRes),
+%%     Trans = cre_transaction(TR),
+%%     Mess  = cre_message(?VERSION, Mid, cre_transactions([Trans])),
+%%     cre_megacoMessage(Mess).
 
 mtraaap_mgc_notify_request_ar(Rid, Tid, Cid) ->
     TT      = cre_timeNotation("19990729", "44000000"),
@@ -6490,13 +6619,13 @@ mtraaap_mgc_notify_reply_ar(Cid, TermId) ->
     CR    = cre_cmdReply(NR),
     cre_actionReply(Cid, [CR]).
 
-mtraaap_mgc_notify_reply(Mid, TransId, Cid, TermId) ->
-    AR    = mtraaap_mgc_notify_reply_ar(Cid, TermId),
-    TRes  = cre_transResult([AR]),
-    TR    = cre_transReply(TransId, TRes),
-    Trans = cre_transaction(TR),
-    Mess  = cre_message(?VERSION, Mid, cre_transactions([Trans])),
-    cre_megacoMessage(Mess).
+%% mtraaap_mgc_notify_reply(Mid, TransId, Cid, TermId) ->
+%%     AR    = mtraaap_mgc_notify_reply_ar(Cid, TermId),
+%%     TRes  = cre_transResult([AR]),
+%%     TR    = cre_transReply(TransId, TRes),
+%%     Trans = cre_transaction(TR),
+%%     Mess  = cre_message(?VERSION, Mid, cre_transactions([Trans])),
+%%     cre_megacoMessage(Mess).
 
 
 %%
@@ -6539,10 +6668,6 @@ mtraaap_mg_event_sequence(text, tcp) ->
     ServiceChangeReplyVerify = ?mtraaap_mg_verify_service_change_reply_fun(), 
     NotifyReqVerify          = ?mtraaap_mg_verify_notify_req_fun(),
     NotifyReplyVerify        = ?mtraaap_mg_verify_notify_reply_fun(), 
-%%     ConnectVerify            = fun mtraaap_mg_verify_handle_connect/1,
-%%     ServiceChangeReplyVerify = fun mtraaap_mg_verify_service_change_reply/1,
-%%     NotifyReqVerify          = mtraaap_mg_verify_notify_request_fun(),
-%%     NotifyReplyVerify        = fun mtraaap_mg_verify_notify_reply/1, 
     EvSeq = [
 	     {debug, true},
 	     megaco_start,
@@ -6638,38 +6763,38 @@ mtraaap_mg_verify_service_change_reply(Else) ->
 	      "~n   Else: ~p~n", [Else]),
     {error, Else, ok}.
 
-mtraaap_mg_verify_notify_request_fun() ->
-    fun(Ev) ->
-	    mtraaap_mg_verify_notify_request(Ev)
-    end.
+%% mtraaap_mg_verify_notify_request_fun() ->
+%%     fun(Ev) ->
+%% 	    mtraaap_mg_verify_notify_request(Ev)
+%%     end.
 
-mtraaap_mg_verify_notify_request(
-  {handle_trans_request, _, ?VERSION, [AR]}) ->
-    io:format("mtraaap_mg_verify_notify_request -> ok"
-	      "~n   AR: ~p~n", [AR]),
-    case AR of
-	#'ActionRequest'{contextId = 1 = Cid, 
-			 commandRequests = [CR]} ->
-	    #'CommandRequest'{command = Cmd} = CR,
-	    {notifyReq, NR} = Cmd,
-	    #'NotifyRequest'{terminationID = [Tid],
-			     observedEventsDescriptor = OED,
-			     errorDescriptor = asn1_NOVALUE} = NR,
-	    #'ObservedEventsDescriptor'{observedEventLst = [OE]} = OED,
-	    #'ObservedEvent'{eventName = "al/of"} = OE,
-	    Reply = {discard_ack, [mtraaap_mg_notify_reply_ar(Cid, Tid)]},
-	    {ok, 3000, AR, Reply};
-	_ ->
-	    ED = mtraaap_err_desc(AR),
-	    ErrReply = {discard_ack, ED},
-	    {error, AR, ErrReply}
-    end;
-mtraaap_mg_verify_notify_request(Else) ->
-    io:format("mtraaap_mg_verify_notify_request:fun -> unknown"
-	      "~n   Else: ~p~n", [Else]),
-    ED = mtraaap_err_desc(Else),
-    ErrReply = {discard_ack, ED},
-    {error, Else, ErrReply}.
+%% mtraaap_mg_verify_notify_request(
+%%   {handle_trans_request, _, ?VERSION, [AR]}) ->
+%%     io:format("mtraaap_mg_verify_notify_request -> ok"
+%% 	      "~n   AR: ~p~n", [AR]),
+%%     case AR of
+%% 	#'ActionRequest'{contextId = 1 = Cid, 
+%% 			 commandRequests = [CR]} ->
+%% 	    #'CommandRequest'{command = Cmd} = CR,
+%% 	    {notifyReq, NR} = Cmd,
+%% 	    #'NotifyRequest'{terminationID = [Tid],
+%% 			     observedEventsDescriptor = OED,
+%% 			     errorDescriptor = asn1_NOVALUE} = NR,
+%% 	    #'ObservedEventsDescriptor'{observedEventLst = [OE]} = OED,
+%% 	    #'ObservedEvent'{eventName = "al/of"} = OE,
+%% 	    Reply = {discard_ack, [mtraaap_mg_notify_reply_ar(Cid, Tid)]},
+%% 	    {ok, 3000, AR, Reply};
+%% 	_ ->
+%% 	    ED = mtraaap_err_desc(AR),
+%% 	    ErrReply = {discard_ack, ED},
+%% 	    {error, AR, ErrReply}
+%%     end;
+%% mtraaap_mg_verify_notify_request(Else) ->
+%%     io:format("mtraaap_mg_verify_notify_request:fun -> unknown"
+%% 	      "~n   Else: ~p~n", [Else]),
+%%     ED = mtraaap_err_desc(Else),
+%%     ErrReply = {discard_ack, ED},
+%%     {error, Else, ErrReply}.
 
 mtraaap_mg_verify_notify_reply({handle_trans_reply, _CH, ?VERSION, 
 				{ok, [AR]}, _}) ->
@@ -6690,17 +6815,17 @@ mtraaap_mg_service_change_request_ar(_Mid, Cid) ->
     CR    = cre_cmdReq(CMD),
     cre_actionReq(Cid, [CR]).
 
-mtraaap_mg_service_change_request_msg(Mid, TransId, Cid) ->
-    AR    = mtraaap_mg_service_change_request_ar(Mid, Cid),
-    TR    = cre_transReq(TransId, [AR]),
-    Trans = cre_transaction(TR),
-    Mess  = cre_message(?VERSION, Mid, cre_transactions([Trans])),
-    cre_megacoMessage(Mess).
+%% mtraaap_mg_service_change_request_msg(Mid, TransId, Cid) ->
+%%     AR    = mtraaap_mg_service_change_request_ar(Mid, Cid),
+%%     TR    = cre_transReq(TransId, [AR]),
+%%     Trans = cre_transaction(TR),
+%%     Mess  = cre_message(?VERSION, Mid, cre_transactions([Trans])),
+%%     cre_megacoMessage(Mess).
 
-mtraaap_mg_notify_reply_ar(Cid, TermId) ->
-    NR = cre_notifyReply([TermId]),
-    CR = cre_cmdReply(NR),
-    cre_actionReply(Cid, [CR]).
+%% mtraaap_mg_notify_reply_ar(Cid, TermId) ->
+%%     NR = cre_notifyReply([TermId]),
+%%     CR = cre_cmdReply(NR),
+%%     cre_actionReply(Cid, [CR]).
 
 mtraaap_mg_notify_request_ar(Rid, Tid, Cid) ->
     TT      = cre_timeNotation("19990729", "22000000"),
@@ -6711,12 +6836,12 @@ mtraaap_mg_notify_request_ar(Rid, Tid, Cid) ->
     CR      = cre_cmdReq(CMD),
     cre_actionReq(Cid, [CR]).
 
-mtraaap_notify_request_msg(Mid, TransId, Rid, TermId, Cid) ->
-    AR    = mtraaap_mg_notify_request_ar(Rid, TermId, Cid),
-    TR    = cre_transReq(TransId, [AR]),
-    Trans = cre_transaction(TR),
-    Mess  = cre_message(?VERSION, Mid, cre_transactions([Trans])),
-    cre_megacoMessage(Mess).
+%% mtraaap_notify_request_msg(Mid, TransId, Rid, TermId, Cid) ->
+%%     AR    = mtraaap_mg_notify_request_ar(Rid, TermId, Cid),
+%%     TR    = cre_transReq(TransId, [AR]),
+%%     Trans = cre_transaction(TR),
+%%     Mess  = cre_message(?VERSION, Mid, cre_transactions([Trans])),
+%%     cre_megacoMessage(Mess).
 
 
 %%
@@ -6724,9 +6849,7 @@ mtraaap_notify_request_msg(Mid, TransId, Rid, TermId, Cid) ->
 %%
 
 mtraaap_err_desc(T) ->
-    EC = ?megaco_internal_gateway_error,
-    ET = lists:flatten(io_lib:format("~w",[T])),
-    #'ErrorDescriptor'{errorCode = EC, errorText = ET}.
+    cre_ErrDesc(T).
 
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -6764,8 +6887,8 @@ multi_trans_req_and_ack_and_reply(Config) when is_list(Config) ->
     MgcNode = make_node_name(mgc),
     MgNode  = make_node_name(mg),
     d("start nodes: "
-      "~n   MgcNode: ~p"
-      "~n   MgNode:  ~p", 
+      "~n      MGC Node: ~p"
+      "~n      MG Node:  ~p", 
       [MgcNode, MgNode]),
     ok = megaco_test_lib:start_nodes([MgcNode, MgNode], ?FILE, ?LINE),
 
@@ -6782,8 +6905,15 @@ multi_trans_req_and_ack_and_reply(Config) when is_list(Config) ->
     d("[MGC] start the simulation"),
     {ok, MgcId} = megaco_test_megaco_generator:exec(Mgc, MgcEvSeq),
 
-    i("wait some time before starting the MG simulator"),
-    sleep(1000),
+    %% i("wait some time before starting the MG simulator"),
+    %% sleep(1000),
+
+    i("await MGC ready announcement"),
+    receive
+        announce_mgc ->
+            i("received MGC ready announcement"),
+            ok
+    end,
 
     d("[MG] start the simulator (generator)"),
     {ok, Mg} = megaco_test_megaco_generator:start_link("MG", MgNode),
@@ -6844,6 +6974,7 @@ multi_trans_req_and_ack_and_reply(Config) when is_list(Config) ->
 -endif.
 
 mtraaar_mgc_event_sequence(text, tcp) ->
+    CTRL = self(),
     Mid = {deviceName,"ctrl"},
     RI = [
 	  {port,             2944},
@@ -6861,12 +6992,6 @@ mtraaar_mgc_event_sequence(text, tcp) ->
     NotifyReplyVerify      = ?mtraaar_mgc_verify_notify_reply_fun(), 
     AckVerify              = ?mtraaar_mgc_verify_ack_fun(), 
     DiscoVerify            = ?mtraaar_mgc_verify_handle_disconnect_fun(), 
-%%     ConnectVerify          = fun mtraaar_mgc_verify_handle_connect/1,
-%%     ServiceChangeReqVerify = mtraaar_mgc_verify_service_change_req_fun(Mid),
-%%     NotifyReqVerify        = mtraaar_mgc_verify_notify_request_fun(),
-%%     NotifyReplyVerify      = fun mtraaar_mgc_verify_notify_reply/1, 
-%%     AckVerify              = fun mtraaar_mgc_verify_ack/1, 
-%%     DiscoVerify            = fun mtraaar_mgc_verify_handle_disconnect/1,
     EvSeq = [
 	     {debug, true},
 	     %% {megaco_trace, max}, 
@@ -6875,6 +7000,10 @@ mtraaar_mgc_event_sequence(text, tcp) ->
 	     {megaco_start_user, Mid, RI, []},
 	     start_transport,
 	     listen,
+
+             %% ANNOUNCE READY
+             {trigger, fun() -> CTRL ! announce_mgc end}, 
+
 	     {megaco_callback, handle_connect,       ConnectVerify},
 	     {megaco_callback, handle_trans_request, ServiceChangeReqVerify},
 	     {megaco_callback, handle_trans_request, NotifyReqVerify},
@@ -7060,13 +7189,13 @@ mtraaar_mgc_service_change_reply_ar(Mid, Cid) ->
     CR    = cre_cmdReply(SCR),
     cre_actionReply(Cid, [CR]).
 
-mtraaar_mgc_service_change_reply_msg(Mid, TransId, Cid) ->
-    AR    = mtraaar_mgc_service_change_reply_ar(Mid, Cid),
-    TRes  = cre_transResult([AR]),
-    TR    = cre_transReply(TransId, TRes),
-    Trans = cre_transaction(TR),
-    Mess  = cre_message(?VERSION, Mid, cre_transactions([Trans])),
-    cre_megacoMessage(Mess).
+%% mtraaar_mgc_service_change_reply_msg(Mid, TransId, Cid) ->
+%%     AR    = mtraaar_mgc_service_change_reply_ar(Mid, Cid),
+%%     TRes  = cre_transResult([AR]),
+%%     TR    = cre_transReply(TransId, TRes),
+%%     Trans = cre_transaction(TR),
+%%     Mess  = cre_message(?VERSION, Mid, cre_transactions([Trans])),
+%%     cre_megacoMessage(Mess).
 
 mtraaar_mgc_notify_request_ar(Rid, Tid, Cid) ->
     TT      = cre_timeNotation("19990729", "44000000"),
@@ -7082,13 +7211,13 @@ mtraaar_mgc_notify_reply_ar(Cid, TermId) ->
     CR    = cre_cmdReply(NR),
     cre_actionReply(Cid, [CR]).
 
-mtraaar_mgc_notify_reply(Mid, TransId, Cid, TermId) ->
-    AR    = mtraaar_mgc_notify_reply_ar(Cid, TermId),
-    TRes  = cre_transResult([AR]),
-    TR    = cre_transReply(TransId, TRes),
-    Trans = cre_transaction(TR),
-    Mess  = cre_message(?VERSION, Mid, cre_transactions([Trans])),
-    cre_megacoMessage(Mess).
+%% mtraaar_mgc_notify_reply(Mid, TransId, Cid, TermId) ->
+%%     AR    = mtraaar_mgc_notify_reply_ar(Cid, TermId),
+%%     TRes  = cre_transResult([AR]),
+%%     TR    = cre_transReply(TransId, TRes),
+%%     Trans = cre_transaction(TR),
+%%     Mess  = cre_message(?VERSION, Mid, cre_transactions([Trans])),
+%%     cre_megacoMessage(Mess).
 
 
 %%
@@ -7131,10 +7260,6 @@ mtraaar_mg_event_sequence(text, tcp) ->
     ServiceChangeReplyVerify = ?mtraaar_mg_verify_service_change_reply_fun(), 
     NotifyReqVerify          = ?mtraaar_mg_verify_notify_req_fun(),
     NotifyReplyVerify        = ?mtraaar_mg_verify_notify_reply_fun(), 
-%%     ConnectVerify            = fun mtraaar_mg_verify_handle_connect/1,
-%%     ServiceChangeReplyVerify = fun mtraaar_mg_verify_service_change_reply/1,
-%%     NotifyReqVerify          = mtraaar_mg_verify_notify_request_fun(),
-%%     NotifyReplyVerify        = fun mtraaar_mg_verify_notify_reply/1, 
     EvSeq = [
 	     {debug, true},
 	     megaco_start,
@@ -7231,38 +7356,38 @@ mtraaar_mg_verify_service_change_reply(Else) ->
 	      "~n   Else: ~p~n", [Else]),
     {error, Else, ok}.
 
-mtraaar_mg_verify_notify_request_fun() ->
-    fun(Ev) ->
-	    mtraaar_mg_verify_notify_request(Ev)
-    end.
+%% mtraaar_mg_verify_notify_request_fun() ->
+%%     fun(Ev) ->
+%% 	    mtraaar_mg_verify_notify_request(Ev)
+%%     end.
 
-mtraaar_mg_verify_notify_request(
-  {handle_trans_request, _, ?VERSION, [AR]}) ->
-    io:format("mtraaar_mg_verify_notify_request -> ok"
-	      "~n   AR: ~p~n", [AR]),
-    case AR of
-	#'ActionRequest'{contextId = 1 = Cid, 
-			 commandRequests = [CR]} ->
-	    #'CommandRequest'{command = Cmd} = CR,
-	    {notifyReq, NR} = Cmd,
-	    #'NotifyRequest'{terminationID = [Tid],
-			     observedEventsDescriptor = OED,
-			     errorDescriptor = asn1_NOVALUE} = NR,
-	    #'ObservedEventsDescriptor'{observedEventLst = [OE]} = OED,
-	    #'ObservedEvent'{eventName = "al/of"} = OE,
-	    Reply = {discard_ack, [mtraaar_mg_notify_reply_ar(Cid, Tid)]},
-	    {ok, AR, Reply};
-	_ ->
-	    ED = mtraaar_err_desc(AR),
-	    ErrReply = {discard_ack, ED},
-	    {error, AR, ErrReply}
-    end;
-mtraaar_mg_verify_notify_request(Else) ->
-    io:format("mtraaar_mg_verify_notify_request -> unknown"
-	      "~n   Else: ~p~n", [Else]),
-    ED = mtraaar_err_desc(Else),
-    ErrReply = {discard_ack, ED},
-    {error, Else, ErrReply}.
+%% mtraaar_mg_verify_notify_request(
+%%   {handle_trans_request, _, ?VERSION, [AR]}) ->
+%%     io:format("mtraaar_mg_verify_notify_request -> ok"
+%% 	      "~n   AR: ~p~n", [AR]),
+%%     case AR of
+%% 	#'ActionRequest'{contextId = 1 = Cid, 
+%% 			 commandRequests = [CR]} ->
+%% 	    #'CommandRequest'{command = Cmd} = CR,
+%% 	    {notifyReq, NR} = Cmd,
+%% 	    #'NotifyRequest'{terminationID = [Tid],
+%% 			     observedEventsDescriptor = OED,
+%% 			     errorDescriptor = asn1_NOVALUE} = NR,
+%% 	    #'ObservedEventsDescriptor'{observedEventLst = [OE]} = OED,
+%% 	    #'ObservedEvent'{eventName = "al/of"} = OE,
+%% 	    Reply = {discard_ack, [mtraaar_mg_notify_reply_ar(Cid, Tid)]},
+%% 	    {ok, AR, Reply};
+%% 	_ ->
+%% 	    ED = mtraaar_err_desc(AR),
+%% 	    ErrReply = {discard_ack, ED},
+%% 	    {error, AR, ErrReply}
+%%     end;
+%% mtraaar_mg_verify_notify_request(Else) ->
+%%     io:format("mtraaar_mg_verify_notify_request -> unknown"
+%% 	      "~n   Else: ~p~n", [Else]),
+%%     ED = mtraaar_err_desc(Else),
+%%     ErrReply = {discard_ack, ED},
+%%     {error, Else, ErrReply}.
 
 mtraaar_mg_verify_notify_reply({handle_trans_reply, _CH, ?VERSION, 
 				{ok, [AR]}, _}) ->
@@ -7283,17 +7408,17 @@ mtraaar_mg_service_change_request_ar(_Mid, Cid) ->
     CR    = cre_cmdReq(CMD),
     cre_actionReq(Cid, [CR]).
 
-mtraaar_mg_service_change_request_msg(Mid, TransId, Cid) ->
-    AR    = mtraaar_mg_service_change_request_ar(Mid, Cid),
-    TR    = cre_transReq(TransId, [AR]),
-    Trans = cre_transaction(TR),
-    Mess  = cre_message(?VERSION, Mid, cre_transactions([Trans])),
-    cre_megacoMessage(Mess).
+%% mtraaar_mg_service_change_request_msg(Mid, TransId, Cid) ->
+%%     AR    = mtraaar_mg_service_change_request_ar(Mid, Cid),
+%%     TR    = cre_transReq(TransId, [AR]),
+%%     Trans = cre_transaction(TR),
+%%     Mess  = cre_message(?VERSION, Mid, cre_transactions([Trans])),
+%%     cre_megacoMessage(Mess).
 
-mtraaar_mg_notify_reply_ar(Cid, TermId) ->
-    NR = cre_notifyReply([TermId]),
-    CR = cre_cmdReply(NR),
-    cre_actionReply(Cid, [CR]).
+%% mtraaar_mg_notify_reply_ar(Cid, TermId) ->
+%%     NR = cre_notifyReply([TermId]),
+%%     CR = cre_cmdReply(NR),
+%%     cre_actionReply(Cid, [CR]).
 
 mtraaar_mg_notify_request_ar(Rid, Tid, Cid) ->
     TT      = cre_timeNotation("19990729", "22000000"),
@@ -7304,12 +7429,12 @@ mtraaar_mg_notify_request_ar(Rid, Tid, Cid) ->
     CR      = cre_cmdReq(CMD),
     cre_actionReq(Cid, [CR]).
 
-mtraaar_notify_request_msg(Mid, TransId, Rid, TermId, Cid) ->
-    AR    = mtraaar_mg_notify_request_ar(Rid, TermId, Cid),
-    TR    = cre_transReq(TransId, [AR]),
-    Trans = cre_transaction(TR),
-    Mess  = cre_message(?VERSION, Mid, cre_transactions([Trans])),
-    cre_megacoMessage(Mess).
+%% mtraaar_notify_request_msg(Mid, TransId, Rid, TermId, Cid) ->
+%%     AR    = mtraaar_mg_notify_request_ar(Rid, TermId, Cid),
+%%     TR    = cre_transReq(TransId, [AR]),
+%%     Trans = cre_transaction(TR),
+%%     Mess  = cre_message(?VERSION, Mid, cre_transactions([Trans])),
+%%     cre_megacoMessage(Mess).
 
 
 %%
@@ -7317,9 +7442,7 @@ mtraaar_notify_request_msg(Mid, TransId, Rid, TermId, Cid) ->
 %%
 
 mtraaar_err_desc(T) ->
-    EC = ?megaco_internal_gateway_error,
-    ET = lists:flatten(io_lib:format("~w",[T])),
-    #'ErrorDescriptor'{errorCode = EC, errorText = ET}.
+    cre_ErrDesc(T).
 
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -7347,8 +7470,8 @@ otp_7192_1(Config) when is_list(Config) ->
     MgcNode = make_node_name(mgc),
     MgNode  = make_node_name(mg),
     d("start nodes: "
-      "~n   MgcNode: ~p"
-      "~n   MgNode:  ~p", 
+      "~n      MGC Node: ~p"
+      "~n      MG Node:  ~p", 
       [MgcNode, MgNode]),
 
     MgMid = {deviceName,"mg"},
@@ -7430,6 +7553,7 @@ otp_7192_1(Config) when is_list(Config) ->
 -endif.
 
 otp71921_mgc_event_sequence(text, tcp, MgMid) ->
+    CTRL = self(),
     Mid = {deviceName, "ctrl"},
     RI = [
 	  {port,             2944},
@@ -7455,6 +7579,10 @@ otp71921_mgc_event_sequence(text, tcp, MgMid) ->
 	     {megaco_start_user, Mid, RI, []},
 	     start_transport,
 	     listen,
+
+             %% ANNOUNCE READY
+             {trigger, fun() -> CTRL ! announce_mgc end}, 
+
 	     {megaco_connect,  MgMid}, 
 	     {megaco_callback, handle_connect,       LocalConnectVerify},
 	     %% {megaco_callback, handle_connect,       RemoteConnectVerify},
@@ -7642,13 +7770,13 @@ otp71921_mgc_service_change_reply_ar(Mid, Cid) ->
     CR    = cre_cmdReply(SCR),
     cre_actionReply(Cid, [CR]).
 
-otp71921_mgc_service_change_reply_msg(Mid, TransId, Cid) ->
-    AR    = otp71921_mgc_service_change_reply_ar(Mid, Cid),
-    TRes  = cre_transResult([AR]),
-    TR    = cre_transReply(TransId, TRes),
-    Trans = cre_transaction(TR),
-    Mess  = cre_message(?VERSION, Mid, cre_transactions([Trans])),
-    cre_megacoMessage(Mess).
+%% otp71921_mgc_service_change_reply_msg(Mid, TransId, Cid) ->
+%%     AR    = otp71921_mgc_service_change_reply_ar(Mid, Cid),
+%%     TRes  = cre_transResult([AR]),
+%%     TR    = cre_transReply(TransId, TRes),
+%%     Trans = cre_transaction(TR),
+%%     Mess  = cre_message(?VERSION, Mid, cre_transactions([Trans])),
+%%     cre_megacoMessage(Mess).
 
 otp71921_mgc_notify_request_ar(Rid, Tid, Cid) ->
     TT      = cre_timeNotation("19990729", "44000000"),
@@ -7664,13 +7792,13 @@ otp71921_mgc_notify_reply_ar(Cid, TermId) ->
     CR    = cre_cmdReply(NR),
     cre_actionReply(Cid, [CR]).
 
-otp71921_mgc_notify_reply(Mid, TransId, Cid, TermId) ->
-    AR    = otp71921_mgc_notify_reply_ar(Cid, TermId),
-    TRes  = cre_transResult([AR]),
-    TR    = cre_transReply(TransId, TRes),
-    Trans = cre_transaction(TR),
-    Mess  = cre_message(?VERSION, Mid, cre_transactions([Trans])),
-    cre_megacoMessage(Mess).
+%% otp71921_mgc_notify_reply(Mid, TransId, Cid, TermId) ->
+%%     AR    = otp71921_mgc_notify_reply_ar(Cid, TermId),
+%%     TRes  = cre_transResult([AR]),
+%%     TR    = cre_transReply(TransId, TRes),
+%%     Trans = cre_transaction(TR),
+%%     Mess  = cre_message(?VERSION, Mid, cre_transactions([Trans])),
+%%     cre_megacoMessage(Mess).
 
 
 %%
@@ -7712,10 +7840,6 @@ otp71921_mg_event_sequence(text, tcp, Mid) ->
     ServiceChangeReplyVerify = ?otp71921_mg_verify_service_change_reply_fun(), 
     NotifyReqVerify          = ?otp71921_mg_verify_notify_req_fun(),
     NotifyReplyVerify        = ?otp71921_mg_verify_notify_reply_fun(), 
-%%     ConnectVerify            = fun otp71921_mg_verify_handle_connect/1,
-%%     ServiceChangeReplyVerify = fun otp71921_mg_verify_service_change_reply/1,
-%%     NotifyReqVerify          = otp71921_mg_verify_notify_request_fun(),
-%%     NotifyReplyVerify        = fun otp71921_mg_verify_notify_reply/1, 
     EvSeq = [
 	     {debug, true},
 	     megaco_start,
@@ -7812,38 +7936,38 @@ otp71921_mg_verify_service_change_reply(Else) ->
 	      "~n   Else: ~p~n", [Else]),
     {error, Else, ok}.
 
-otp71921_mg_verify_notify_request_fun() ->
-    fun(Ev) ->
-	    otp71921_mg_verify_notify_request(Ev)
-    end.
+%% otp71921_mg_verify_notify_request_fun() ->
+%%     fun(Ev) ->
+%% 	    otp71921_mg_verify_notify_request(Ev)
+%%     end.
 
-otp71921_mg_verify_notify_request(
-  {handle_trans_request, _, ?VERSION, [AR]}) ->
-    io:format("otp71921_mg_verify_notify_request -> ok"
-	      "~n   AR: ~p~n", [AR]),
-    case AR of
-	#'ActionRequest'{contextId = 1 = Cid, 
-			 commandRequests = [CR]} ->
-	    #'CommandRequest'{command = Cmd} = CR,
-	    {notifyReq, NR} = Cmd,
-	    #'NotifyRequest'{terminationID = [Tid],
-			     observedEventsDescriptor = OED,
-			     errorDescriptor = asn1_NOVALUE} = NR,
-	    #'ObservedEventsDescriptor'{observedEventLst = [OE]} = OED,
-	    #'ObservedEvent'{eventName = "al/of"} = OE,
-	    Reply = {discard_ack, [otp71921_mg_notify_reply_ar(Cid, Tid)]},
-	    {ok, AR, Reply};
-	_ ->
-	    ED = otp71921_err_desc(AR),
-	    ErrReply = {discard_ack, ED},
-	    {error, AR, ErrReply}
-    end;
-otp71921_mg_verify_notify_request(Else) ->
-    io:format("otp71921_mg_verify_notify_request -> unknown"
-	      "~n   Else: ~p~n", [Else]),
-    ED = otp71921_err_desc(Else),
-    ErrReply = {discard_ack, ED},
-    {error, Else, ErrReply}.
+%% otp71921_mg_verify_notify_request(
+%%   {handle_trans_request, _, ?VERSION, [AR]}) ->
+%%     io:format("otp71921_mg_verify_notify_request -> ok"
+%% 	      "~n   AR: ~p~n", [AR]),
+%%     case AR of
+%% 	#'ActionRequest'{contextId = 1 = Cid, 
+%% 			 commandRequests = [CR]} ->
+%% 	    #'CommandRequest'{command = Cmd} = CR,
+%% 	    {notifyReq, NR} = Cmd,
+%% 	    #'NotifyRequest'{terminationID = [Tid],
+%% 			     observedEventsDescriptor = OED,
+%% 			     errorDescriptor = asn1_NOVALUE} = NR,
+%% 	    #'ObservedEventsDescriptor'{observedEventLst = [OE]} = OED,
+%% 	    #'ObservedEvent'{eventName = "al/of"} = OE,
+%% 	    Reply = {discard_ack, [otp71921_mg_notify_reply_ar(Cid, Tid)]},
+%% 	    {ok, AR, Reply};
+%% 	_ ->
+%% 	    ED = otp71921_err_desc(AR),
+%% 	    ErrReply = {discard_ack, ED},
+%% 	    {error, AR, ErrReply}
+%%     end;
+%% otp71921_mg_verify_notify_request(Else) ->
+%%     io:format("otp71921_mg_verify_notify_request -> unknown"
+%% 	      "~n   Else: ~p~n", [Else]),
+%%     ED = otp71921_err_desc(Else),
+%%     ErrReply = {discard_ack, ED},
+%%     {error, Else, ErrReply}.
 
 otp71921_mg_verify_notify_reply({handle_trans_reply, _CH, ?VERSION, 
 				{ok, [AR]}, _}) ->
@@ -7864,17 +7988,17 @@ otp71921_mg_service_change_request_ar(_Mid, Cid) ->
     CR    = cre_cmdReq(CMD),
     cre_actionReq(Cid, [CR]).
 
-otp71921_mg_service_change_request_msg(Mid, TransId, Cid) ->
-    AR    = otp71921_mg_service_change_request_ar(Mid, Cid),
-    TR    = cre_transReq(TransId, [AR]),
-    Trans = cre_transaction(TR),
-    Mess  = cre_message(?VERSION, Mid, cre_transactions([Trans])),
-    cre_megacoMessage(Mess).
+%% otp71921_mg_service_change_request_msg(Mid, TransId, Cid) ->
+%%     AR    = otp71921_mg_service_change_request_ar(Mid, Cid),
+%%     TR    = cre_transReq(TransId, [AR]),
+%%     Trans = cre_transaction(TR),
+%%     Mess  = cre_message(?VERSION, Mid, cre_transactions([Trans])),
+%%     cre_megacoMessage(Mess).
 
-otp71921_mg_notify_reply_ar(Cid, TermId) ->
-    NR = cre_notifyReply([TermId]),
-    CR = cre_cmdReply(NR),
-    cre_actionReply(Cid, [CR]).
+%% otp71921_mg_notify_reply_ar(Cid, TermId) ->
+%%     NR = cre_notifyReply([TermId]),
+%%     CR = cre_cmdReply(NR),
+%%     cre_actionReply(Cid, [CR]).
 
 otp71921_mg_notify_request_ar(Rid, Tid, Cid) ->
     TT      = cre_timeNotation("19990729", "22000000"),
@@ -7885,12 +8009,12 @@ otp71921_mg_notify_request_ar(Rid, Tid, Cid) ->
     CR      = cre_cmdReq(CMD),
     cre_actionReq(Cid, [CR]).
 
-otp71921_notify_request_msg(Mid, TransId, Rid, TermId, Cid) ->
-    AR    = otp71921_mg_notify_request_ar(Rid, TermId, Cid),
-    TR    = cre_transReq(TransId, [AR]),
-    Trans = cre_transaction(TR),
-    Mess  = cre_message(?VERSION, Mid, cre_transactions([Trans])),
-    cre_megacoMessage(Mess).
+%% otp71921_notify_request_msg(Mid, TransId, Rid, TermId, Cid) ->
+%%     AR    = otp71921_mg_notify_request_ar(Rid, TermId, Cid),
+%%     TR    = cre_transReq(TransId, [AR]),
+%%     Trans = cre_transaction(TR),
+%%     Mess  = cre_message(?VERSION, Mid, cre_transactions([Trans])),
+%%     cre_megacoMessage(Mess).
 
 
 %%
@@ -7918,8 +8042,8 @@ otp_7192_2(Config) when is_list(Config) ->
     MgcNode = make_node_name(mgc),
     MgNode  = make_node_name(mg),
     d("start nodes: "
-      "~n   MgcNode: ~p"
-      "~n   MgNode:  ~p", 
+      "~n      MGC Node: ~p"
+      "~n      MG Node:  ~p", 
       [MgcNode, MgNode]),
 
     MgMid = {deviceName,"mg"},
@@ -8001,6 +8125,7 @@ otp_7192_2(Config) when is_list(Config) ->
 -endif.
 
 otp71922_mgc_event_sequence(text, tcp, MgMid) ->
+    CTRL = self(),
     Mid = {deviceName, "ctrl"},
     RI = [
 	  {port,             2944},
@@ -8026,6 +8151,10 @@ otp71922_mgc_event_sequence(text, tcp, MgMid) ->
 	     {megaco_start_user, Mid, RI, []},
 	     start_transport,
 	     listen,
+
+             %% ANNOUNCE READY
+             {trigger, fun() -> CTRL ! announce_mgc end}, 
+
 	     {megaco_connect,  MgMid}, 
 	     {megaco_callback, handle_connect,       LocalConnectVerify},
 	     {megaco_callback, handle_trans_request, ServiceChangeReqVerify},
@@ -8212,13 +8341,13 @@ otp71922_mgc_service_change_reply_ar(Mid, Cid) ->
     CR    = cre_cmdReply(SCR),
     cre_actionReply(Cid, [CR]).
 
-otp71922_mgc_service_change_reply_msg(Mid, TransId, Cid) ->
-    AR    = otp71922_mgc_service_change_reply_ar(Mid, Cid),
-    TRes  = cre_transResult([AR]),
-    TR    = cre_transReply(TransId, TRes),
-    Trans = cre_transaction(TR),
-    Mess  = cre_message(?VERSION, Mid, cre_transactions([Trans])),
-    cre_megacoMessage(Mess).
+%% otp71922_mgc_service_change_reply_msg(Mid, TransId, Cid) ->
+%%     AR    = otp71922_mgc_service_change_reply_ar(Mid, Cid),
+%%     TRes  = cre_transResult([AR]),
+%%     TR    = cre_transReply(TransId, TRes),
+%%     Trans = cre_transaction(TR),
+%%     Mess  = cre_message(?VERSION, Mid, cre_transactions([Trans])),
+%%     cre_megacoMessage(Mess).
 
 otp71922_mgc_notify_request_ar(Rid, Tid, Cid) ->
     TT      = cre_timeNotation("19990729", "44000000"),
@@ -8234,13 +8363,13 @@ otp71922_mgc_notify_reply_ar(Cid, TermId) ->
     CR    = cre_cmdReply(NR),
     cre_actionReply(Cid, [CR]).
 
-otp71922_mgc_notify_reply(Mid, TransId, Cid, TermId) ->
-    AR    = otp71922_mgc_notify_reply_ar(Cid, TermId),
-    TRes  = cre_transResult([AR]),
-    TR    = cre_transReply(TransId, TRes),
-    Trans = cre_transaction(TR),
-    Mess  = cre_message(?VERSION, Mid, cre_transactions([Trans])),
-    cre_megacoMessage(Mess).
+%% otp71922_mgc_notify_reply(Mid, TransId, Cid, TermId) ->
+%%     AR    = otp71922_mgc_notify_reply_ar(Cid, TermId),
+%%     TRes  = cre_transResult([AR]),
+%%     TR    = cre_transReply(TransId, TRes),
+%%     Trans = cre_transaction(TR),
+%%     Mess  = cre_message(?VERSION, Mid, cre_transactions([Trans])),
+%%     cre_megacoMessage(Mess).
 
 
 %%
@@ -8378,38 +8507,38 @@ otp71922_mg_verify_service_change_reply(Else) ->
 	      "~n   Else: ~p~n", [Else]),
     {error, Else, ok}.
 
-otp71922_mg_verify_notify_request_fun() ->
-    fun(Ev) ->
-	    otp71922_mg_verify_notify_request(Ev)
-    end.
+%% otp71922_mg_verify_notify_request_fun() ->
+%%     fun(Ev) ->
+%% 	    otp71922_mg_verify_notify_request(Ev)
+%%     end.
 
-otp71922_mg_verify_notify_request(
-  {handle_trans_request, _, ?VERSION, [AR]}) ->
-    io:format("otp71922_mg_verify_notify_request -> ok"
-	      "~n   AR: ~p~n", [AR]),
-    case AR of
-	#'ActionRequest'{contextId = 1 = Cid, 
-			 commandRequests = [CR]} ->
-	    #'CommandRequest'{command = Cmd} = CR,
-	    {notifyReq, NR} = Cmd,
-	    #'NotifyRequest'{terminationID = [Tid],
-			     observedEventsDescriptor = OED,
-			     errorDescriptor = asn1_NOVALUE} = NR,
-	    #'ObservedEventsDescriptor'{observedEventLst = [OE]} = OED,
-	    #'ObservedEvent'{eventName = "al/of"} = OE,
-	    Reply = {discard_ack, [otp71922_mg_notify_reply_ar(Cid, Tid)]},
-	    {ok, AR, Reply};
-	_ ->
-	    ED = otp71922_err_desc(AR),
-	    ErrReply = {discard_ack, ED},
-	    {error, AR, ErrReply}
-    end;
-otp71922_mg_verify_notify_request(Else) ->
-    io:format("otp71922_mg_verify_notify_request -> unknown"
-	      "~n   Else: ~p~n", [Else]),
-    ED = otp71922_err_desc(Else),
-    ErrReply = {discard_ack, ED},
-    {error, Else, ErrReply}.
+%% otp71922_mg_verify_notify_request(
+%%   {handle_trans_request, _, ?VERSION, [AR]}) ->
+%%     io:format("otp71922_mg_verify_notify_request -> ok"
+%% 	      "~n   AR: ~p~n", [AR]),
+%%     case AR of
+%% 	#'ActionRequest'{contextId = 1 = Cid, 
+%% 			 commandRequests = [CR]} ->
+%% 	    #'CommandRequest'{command = Cmd} = CR,
+%% 	    {notifyReq, NR} = Cmd,
+%% 	    #'NotifyRequest'{terminationID = [Tid],
+%% 			     observedEventsDescriptor = OED,
+%% 			     errorDescriptor = asn1_NOVALUE} = NR,
+%% 	    #'ObservedEventsDescriptor'{observedEventLst = [OE]} = OED,
+%% 	    #'ObservedEvent'{eventName = "al/of"} = OE,
+%% 	    Reply = {discard_ack, [otp71922_mg_notify_reply_ar(Cid, Tid)]},
+%% 	    {ok, AR, Reply};
+%% 	_ ->
+%% 	    ED = otp71922_err_desc(AR),
+%% 	    ErrReply = {discard_ack, ED},
+%% 	    {error, AR, ErrReply}
+%%     end;
+%% otp71922_mg_verify_notify_request(Else) ->
+%%     io:format("otp71922_mg_verify_notify_request -> unknown"
+%% 	      "~n   Else: ~p~n", [Else]),
+%%     ED = otp71922_err_desc(Else),
+%%     ErrReply = {discard_ack, ED},
+%%     {error, Else, ErrReply}.
 
 otp71922_mg_verify_notify_reply({handle_trans_reply, _CH, ?VERSION, 
 				{ok, [AR]}, _}) ->
@@ -8430,17 +8559,17 @@ otp71922_mg_service_change_request_ar(_Mid, Cid) ->
     CR    = cre_cmdReq(CMD),
     cre_actionReq(Cid, [CR]).
 
-otp71922_mg_service_change_request_msg(Mid, TransId, Cid) ->
-    AR    = otp71922_mg_service_change_request_ar(Mid, Cid),
-    TR    = cre_transReq(TransId, [AR]),
-    Trans = cre_transaction(TR),
-    Mess  = cre_message(?VERSION, Mid, cre_transactions([Trans])),
-    cre_megacoMessage(Mess).
+%% otp71922_mg_service_change_request_msg(Mid, TransId, Cid) ->
+%%     AR    = otp71922_mg_service_change_request_ar(Mid, Cid),
+%%     TR    = cre_transReq(TransId, [AR]),
+%%     Trans = cre_transaction(TR),
+%%     Mess  = cre_message(?VERSION, Mid, cre_transactions([Trans])),
+%%     cre_megacoMessage(Mess).
 
-otp71922_mg_notify_reply_ar(Cid, TermId) ->
-    NR = cre_notifyReply([TermId]),
-    CR = cre_cmdReply(NR),
-    cre_actionReply(Cid, [CR]).
+%% otp71922_mg_notify_reply_ar(Cid, TermId) ->
+%%     NR = cre_notifyReply([TermId]),
+%%     CR = cre_cmdReply(NR),
+%%     cre_actionReply(Cid, [CR]).
 
 otp71922_mg_notify_request_ar(Rid, Tid, Cid) ->
     TT      = cre_timeNotation("19990729", "22000000"),
@@ -8451,12 +8580,12 @@ otp71922_mg_notify_request_ar(Rid, Tid, Cid) ->
     CR      = cre_cmdReq(CMD),
     cre_actionReq(Cid, [CR]).
 
-otp71922_notify_request_msg(Mid, TransId, Rid, TermId, Cid) ->
-    AR    = otp71922_mg_notify_request_ar(Rid, TermId, Cid),
-    TR    = cre_transReq(TransId, [AR]),
-    Trans = cre_transaction(TR),
-    Mess  = cre_message(?VERSION, Mid, cre_transactions([Trans])),
-    cre_megacoMessage(Mess).
+%% otp71922_notify_request_msg(Mid, TransId, Rid, TermId, Cid) ->
+%%     AR    = otp71922_mg_notify_request_ar(Rid, TermId, Cid),
+%%     TR    = cre_transReq(TransId, [AR]),
+%%     Trans = cre_transaction(TR),
+%%     Mess  = cre_message(?VERSION, Mid, cre_transactions([Trans])),
+%%     cre_megacoMessage(Mess).
 
 
 %%
@@ -8464,9 +8593,7 @@ otp71922_notify_request_msg(Mid, TransId, Rid, TermId, Cid) ->
 %%
 
 otp71922_err_desc(T) ->
-    EC = ?megaco_internal_gateway_error,
-    ET = lists:flatten(io_lib:format("~w",[T])),
-    #'ErrorDescriptor'{errorCode = EC, errorText = ET}.
+    cre_ErrDesc(T).
 
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -8484,8 +8611,8 @@ otp_7192_3(Config) when is_list(Config) ->
     MgcNode = make_node_name(mgc),
     MgNode  = make_node_name(mg),
     d("start nodes: "
-      "~n   MgcNode: ~p"
-      "~n   MgNode:  ~p", 
+      "~n      MGC Node: ~p"
+      "~n      MG Node:  ~p", 
       [MgcNode, MgNode]),
 
     MgMid = {deviceName,"mg"},
@@ -8567,6 +8694,7 @@ otp_7192_3(Config) when is_list(Config) ->
 -endif.
 
 otp72923_mgc_event_sequence(text, udp, MgMid) ->
+    CTRL = self(),
     Mid = {deviceName, "ctrl"},
     RI = [
 	  {port,             2944},
@@ -8592,6 +8720,10 @@ otp72923_mgc_event_sequence(text, udp, MgMid) ->
 	     {megaco_start_user, Mid, RI, []},
 	     start_transport,
 	     listen,
+
+             %% ANNOUNCE READY
+             {trigger, fun() -> CTRL ! announce_mgc end}, 
+
 	     {megaco_connect,  MgMid}, 
 	     {megaco_callback, handle_connect,       LocalConnectVerify},
 	     {megaco_callback, handle_trans_request, ServiceChangeReqVerify},
@@ -8778,13 +8910,13 @@ otp72923_mgc_service_change_reply_ar(Mid, Cid) ->
     CR    = cre_cmdReply(SCR),
     cre_actionReply(Cid, [CR]).
 
-otp72923_mgc_service_change_reply_msg(Mid, TransId, Cid) ->
-    AR    = otp72923_mgc_service_change_reply_ar(Mid, Cid),
-    TRes  = cre_transResult([AR]),
-    TR    = cre_transReply(TransId, TRes),
-    Trans = cre_transaction(TR),
-    Mess  = cre_message(?VERSION, Mid, cre_transactions([Trans])),
-    cre_megacoMessage(Mess).
+%% otp72923_mgc_service_change_reply_msg(Mid, TransId, Cid) ->
+%%     AR    = otp72923_mgc_service_change_reply_ar(Mid, Cid),
+%%     TRes  = cre_transResult([AR]),
+%%     TR    = cre_transReply(TransId, TRes),
+%%     Trans = cre_transaction(TR),
+%%     Mess  = cre_message(?VERSION, Mid, cre_transactions([Trans])),
+%%     cre_megacoMessage(Mess).
 
 otp72923_mgc_notify_request_ar(Rid, Tid, Cid) ->
     TT      = cre_timeNotation("19990729", "44000000"),
@@ -8800,13 +8932,13 @@ otp72923_mgc_notify_reply_ar(Cid, TermId) ->
     CR    = cre_cmdReply(NR),
     cre_actionReply(Cid, [CR]).
 
-otp72923_mgc_notify_reply(Mid, TransId, Cid, TermId) ->
-    AR    = otp72923_mgc_notify_reply_ar(Cid, TermId),
-    TRes  = cre_transResult([AR]),
-    TR    = cre_transReply(TransId, TRes),
-    Trans = cre_transaction(TR),
-    Mess  = cre_message(?VERSION, Mid, cre_transactions([Trans])),
-    cre_megacoMessage(Mess).
+%% otp72923_mgc_notify_reply(Mid, TransId, Cid, TermId) ->
+%%     AR    = otp72923_mgc_notify_reply_ar(Cid, TermId),
+%%     TRes  = cre_transResult([AR]),
+%%     TR    = cre_transReply(TransId, TRes),
+%%     Trans = cre_transaction(TR),
+%%     Mess  = cre_message(?VERSION, Mid, cre_transactions([Trans])),
+%%     cre_megacoMessage(Mess).
 
 
 %%
@@ -8945,38 +9077,38 @@ otp72923_mg_verify_service_change_reply(Else) ->
 	      "~n   Else: ~p~n", [Else]),
     {error, Else, ok}.
 
-otp72923_mg_verify_notify_request_fun() ->
-    fun(Ev) ->
-	    otp72923_mg_verify_notify_request(Ev)
-    end.
+%% otp72923_mg_verify_notify_request_fun() ->
+%%     fun(Ev) ->
+%% 	    otp72923_mg_verify_notify_request(Ev)
+%%     end.
 
-otp72923_mg_verify_notify_request(
-  {handle_trans_request, _, ?VERSION, [AR]}) ->
-    io:format("otp72923_mg_verify_notify_request -> ok"
-	      "~n   AR: ~p~n", [AR]),
-    case AR of
-	#'ActionRequest'{contextId = 1 = Cid, 
-			 commandRequests = [CR]} ->
-	    #'CommandRequest'{command = Cmd} = CR,
-	    {notifyReq, NR} = Cmd,
-	    #'NotifyRequest'{terminationID = [Tid],
-			     observedEventsDescriptor = OED,
-			     errorDescriptor = asn1_NOVALUE} = NR,
-	    #'ObservedEventsDescriptor'{observedEventLst = [OE]} = OED,
-	    #'ObservedEvent'{eventName = "al/of"} = OE,
-	    Reply = {discard_ack, [otp72923_mg_notify_reply_ar(Cid, Tid)]},
-	    {ok, AR, Reply};
-	_ ->
-	    ED = otp72923_err_desc(AR),
-	    ErrReply = {discard_ack, ED},
-	    {error, AR, ErrReply}
-    end;
-otp72923_mg_verify_notify_request(Else) ->
-    io:format("otp72923_mg_verify_notify_request -> unknown"
-	      "~n   Else: ~p~n", [Else]),
-    ED = otp72923_err_desc(Else),
-    ErrReply = {discard_ack, ED},
-    {error, Else, ErrReply}.
+%% otp72923_mg_verify_notify_request(
+%%   {handle_trans_request, _, ?VERSION, [AR]}) ->
+%%     io:format("otp72923_mg_verify_notify_request -> ok"
+%% 	      "~n   AR: ~p~n", [AR]),
+%%     case AR of
+%% 	#'ActionRequest'{contextId = 1 = Cid, 
+%% 			 commandRequests = [CR]} ->
+%% 	    #'CommandRequest'{command = Cmd} = CR,
+%% 	    {notifyReq, NR} = Cmd,
+%% 	    #'NotifyRequest'{terminationID = [Tid],
+%% 			     observedEventsDescriptor = OED,
+%% 			     errorDescriptor = asn1_NOVALUE} = NR,
+%% 	    #'ObservedEventsDescriptor'{observedEventLst = [OE]} = OED,
+%% 	    #'ObservedEvent'{eventName = "al/of"} = OE,
+%% 	    Reply = {discard_ack, [otp72923_mg_notify_reply_ar(Cid, Tid)]},
+%% 	    {ok, AR, Reply};
+%% 	_ ->
+%% 	    ED = otp72923_err_desc(AR),
+%% 	    ErrReply = {discard_ack, ED},
+%% 	    {error, AR, ErrReply}
+%%     end;
+%% otp72923_mg_verify_notify_request(Else) ->
+%%     io:format("otp72923_mg_verify_notify_request -> unknown"
+%% 	      "~n   Else: ~p~n", [Else]),
+%%     ED = otp72923_err_desc(Else),
+%%     ErrReply = {discard_ack, ED},
+%%     {error, Else, ErrReply}.
 
 otp72923_mg_verify_notify_reply({handle_trans_reply, _CH, ?VERSION, 
 				{ok, [AR]}, _}) ->
@@ -8997,17 +9129,17 @@ otp72923_mg_service_change_request_ar(_Mid, Cid) ->
     CR    = cre_cmdReq(CMD),
     cre_actionReq(Cid, [CR]).
 
-otp72923_mg_service_change_request_msg(Mid, TransId, Cid) ->
-    AR    = otp72923_mg_service_change_request_ar(Mid, Cid),
-    TR    = cre_transReq(TransId, [AR]),
-    Trans = cre_transaction(TR),
-    Mess  = cre_message(?VERSION, Mid, cre_transactions([Trans])),
-    cre_megacoMessage(Mess).
+%% otp72923_mg_service_change_request_msg(Mid, TransId, Cid) ->
+%%     AR    = otp72923_mg_service_change_request_ar(Mid, Cid),
+%%     TR    = cre_transReq(TransId, [AR]),
+%%     Trans = cre_transaction(TR),
+%%     Mess  = cre_message(?VERSION, Mid, cre_transactions([Trans])),
+%%     cre_megacoMessage(Mess).
 
-otp72923_mg_notify_reply_ar(Cid, TermId) ->
-    NR = cre_notifyReply([TermId]),
-    CR = cre_cmdReply(NR),
-    cre_actionReply(Cid, [CR]).
+%% otp72923_mg_notify_reply_ar(Cid, TermId) ->
+%%     NR = cre_notifyReply([TermId]),
+%%     CR = cre_cmdReply(NR),
+%%     cre_actionReply(Cid, [CR]).
 
 otp72923_mg_notify_request_ar(Rid, Tid, Cid) ->
     TT      = cre_timeNotation("19990729", "22000000"),
@@ -9018,12 +9150,12 @@ otp72923_mg_notify_request_ar(Rid, Tid, Cid) ->
     CR      = cre_cmdReq(CMD),
     cre_actionReq(Cid, [CR]).
 
-otp72923_notify_request_msg(Mid, TransId, Rid, TermId, Cid) ->
-    AR    = otp72923_mg_notify_request_ar(Rid, TermId, Cid),
-    TR    = cre_transReq(TransId, [AR]),
-    Trans = cre_transaction(TR),
-    Mess  = cre_message(?VERSION, Mid, cre_transactions([Trans])),
-    cre_megacoMessage(Mess).
+%% otp72923_notify_request_msg(Mid, TransId, Rid, TermId, Cid) ->
+%%     AR    = otp72923_mg_notify_request_ar(Rid, TermId, Cid),
+%%     TR    = cre_transReq(TransId, [AR]),
+%%     Trans = cre_transaction(TR),
+%%     Mess  = cre_message(?VERSION, Mid, cre_transactions([Trans])),
+%%     cre_megacoMessage(Mess).
 
 
 %%
@@ -9031,9 +9163,7 @@ otp72923_notify_request_msg(Mid, TransId, Rid, TermId, Cid) ->
 %%
 
 otp72923_err_desc(T) ->
-    EC = ?megaco_internal_gateway_error,
-    ET = lists:flatten(io_lib:format("~w",[T])),
-    #'ErrorDescriptor'{errorCode = EC, errorText = ET}.
+    cre_ErrDesc(T).
 
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -9064,10 +9194,10 @@ cre_timeNotation(D,T) ->
 cre_obsEvent(Name, Not) ->
     #'ObservedEvent'{eventName    = Name, 
 		     timeNotation = Not}.
-cre_obsEvent(Name, Not, Par) ->
-    #'ObservedEvent'{eventName    = Name, 
-		     timeNotation = Not, 
-		     eventParList = Par}.
+%% cre_obsEvent(Name, Not, Par) ->
+%%     #'ObservedEvent'{eventName    = Name, 
+%% 		     timeNotation = Not, 
+%% 		     eventParList = Par}.
 
 cre_obsEvsDesc(Id, EvList) ->
     #'ObservedEventsDescriptor'{requestId        = Id, 
@@ -9089,9 +9219,9 @@ cre_actionReq(CtxId, CmdReqs) when is_list(CmdReqs) ->
     #'ActionRequest'{contextId       = CtxId,
 		     commandRequests = CmdReqs}.
 
-cre_transReq(TransId, ARs) when is_list(ARs) ->
-    #'TransactionRequest'{transactionId = TransId,
-			  actions       = ARs}.
+%% cre_transReq(TransId, ARs) when is_list(ARs) ->
+%%     #'TransactionRequest'{transactionId = TransId,
+%% 			  actions       = ARs}.
 
 %% --
 
@@ -9119,14 +9249,14 @@ cre_actionReply(CtxId, CmdRep) ->
     #'ActionReply'{contextId    = CtxId,
                    commandReply = CmdRep}.
 
-cre_transResult(ED) when is_record(ED, 'ErrorDescriptor') ->
-    {transactionError, ED};
-cre_transResult([AR|_] = ARs) when is_record(AR, 'ActionReply') ->
-    {actionReplies, ARs}.
+%% cre_transResult(ED) when is_record(ED, 'ErrorDescriptor') ->
+%%     {transactionError, ED};
+%% cre_transResult([AR|_] = ARs) when is_record(AR, 'ActionReply') ->
+%%     {actionReplies, ARs}.
 
-cre_transReply(TransId, Res) ->
-    #'TransactionReply'{transactionId     = TransId,
-			transactionResult = Res}.
+%% cre_transReply(TransId, Res) ->
+%%     #'TransactionReply'{transactionId     = TransId,
+%% 			transactionResult = Res}.
 
 
 %% --
@@ -9135,48 +9265,48 @@ cre_serviceChangeProf(Name, Ver) when is_list(Name) andalso is_integer(Ver) ->
     #'ServiceChangeProfile'{profileName = Name, 
 			    version     = Ver}.
 
-cre_transaction(Trans) when is_record(Trans, 'TransactionRequest') ->
-    {transactionRequest, Trans};
-cre_transaction(Trans) when is_record(Trans, 'TransactionPending') ->
-    {transactionPending, Trans};
-cre_transaction(Trans) when is_record(Trans, 'TransactionReply') ->
-    {transactionReply, Trans};
-cre_transaction(Trans) when is_record(Trans, 'TransactionAck') ->
-    {transactionResponseAck, Trans}.
+%% cre_transaction(Trans) when is_record(Trans, 'TransactionRequest') ->
+%%     {transactionRequest, Trans};
+%% cre_transaction(Trans) when is_record(Trans, 'TransactionPending') ->
+%%     {transactionPending, Trans};
+%% cre_transaction(Trans) when is_record(Trans, 'TransactionReply') ->
+%%     {transactionReply, Trans};
+%% cre_transaction(Trans) when is_record(Trans, 'TransactionAck') ->
+%%     {transactionResponseAck, Trans}.
 
-cre_transactions(Trans) when is_list(Trans) ->
-    {transactions, Trans}.
+%% cre_transactions(Trans) when is_list(Trans) ->
+%%     {transactions, Trans}.
 
-cre_message(Version, Mid, Body) ->
-    #'Message'{version     = Version,
-	       mId         = Mid,
-	       messageBody = Body}.
+%% cre_message(Version, Mid, Body) ->
+%%     #'Message'{version     = Version,
+%% 	       mId         = Mid,
+%% 	       messageBody = Body}.
 
-cre_megacoMessage(Mess) ->
-    #'MegacoMessage'{mess = Mess}.
+%% cre_megacoMessage(Mess) ->
+%%     #'MegacoMessage'{mess = Mess}.
    
     
 %%
 %% Common functions
 %%
 
-encode_msg_fun(Mod, Conf) ->
-    fun(M) -> 
-            Mod:encode_message(Conf, M) 
-    end.
-encode_msg_fun(Mod, Conf, Ver) ->
-    fun(M) -> 
-            Mod:encode_message(Conf, Ver, M) 
-    end.
+%% encode_msg_fun(Mod, Conf) ->
+%%     fun(M) -> 
+%%             Mod:encode_message(Conf, M) 
+%%     end.
+%% encode_msg_fun(Mod, Conf, Ver) ->
+%%     fun(M) -> 
+%%             Mod:encode_message(Conf, Ver, M) 
+%%     end.
 
-decode_msg_fun(Mod, Conf) ->
-    fun(M) -> 
-            Mod:decode_message(Conf, M) 
-    end.
-decode_msg_fun(Mod, Conf, Ver) ->
-    fun(M) -> 
-            Mod:decode_message(Conf, Ver, M) 
-    end.
+%% decode_msg_fun(Mod, Conf) ->
+%%     fun(M) -> 
+%%             Mod:decode_message(Conf, M) 
+%%     end.
+%% decode_msg_fun(Mod, Conf, Ver) ->
+%%     fun(M) -> 
+%%             Mod:decode_message(Conf, Ver, M) 
+%%     end.
 
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -9189,10 +9319,10 @@ await_ack(User, N, Timeout, Expected) when (N > 0) andalso is_integer(Timeout) -
     T = tim(),
     receive
 	{ack_received, User, Expected} ->
-	    d("await_ack -> received another ack"),
+	    d("await_ack -> received another expected ack"),
 	    await_ack(User, N-1, Timeout - (tim() - T), Expected);
 	{ack_received, User, UnExpected} ->
-	    d("await_ack -> unexpected ack result: ~p", [UnExpected]),
+	    e("await_ack -> received unexpected ack result: ~p", [UnExpected]),
 	    exit({unexpected_ack_result, UnExpected, Expected})
     after Timeout ->
 	    exit({await_ack_timeout, N})
@@ -9204,72 +9334,13 @@ await_ack(User, N, infinity, Expected) when N > 0 ->
 	    d("await_ack -> received another ack"),
 	    await_ack(User, N-1, infinity, Expected);
 	{ack_received, User, UnExpected} ->
-	    d("await_ack -> unexpected ack result: ~p", [UnExpected]),
+	    e("await_ack -> unexpected ack result: ~p", [UnExpected]),
 	    exit({unexpected_ack_result, UnExpected, Expected})
     end.
 
-await_req(_User, 0, Timeout) ->
-    d("await_req -> done when Timeout = ~p", [Timeout]),
-    ok;
-await_req(User, N, Timeout) when (N > 0) andalso is_integer(Timeout) ->
-    d("await_req -> entry with N: ~p, Timeout: ~p", [N,Timeout]),
-    T = tim(),
-    receive
-	{req_received, User, ARs} ->
-	    d("await_req -> received req(s) when N = ~w", [N]),
-	    N1 = await_req1(N, ARs),
-	    await_req(User, N1, Timeout - (tim() - T))
-    after Timeout ->
-	    exit({await_req_timeout, N})
-    end;
-await_req(User, N, infinity) when N > 0 ->
-    d("await_req -> entry with N: ~p", [N]),
-    receive
-	{req_received, User, ARs} ->
-	    d("await_req -> received req(s) when N = ~2",[N]),
-	    N1 = await_req1(N, ARs),
-	    await_req(User, N1, infinity)
-    end.
-
-await_req1(N, []) when N >= 0 ->
-    N;
-await_req1(N, [AR|ARs]) when (N > 0) andalso is_record(AR, 'ActionRequest') ->
-    await_req1(N-1, ARs);
-await_req1(N, ARs) ->
-    exit({unexpected_req_result, N, ARs}).
-
-% await_rep(_User, 0, Timeout) ->
-%     d("await_rep -> done when Timeout = ~p", [Timeout]),
-%     ok;
-% await_rep(User, N, Timeout) when N > 0, integer(Timeout) ->
-%     d("await_rep -> entry with N: ~p, Timeout: ~p", [N,Timeout]),
-%     T = tim(),
-%     receive
-% 	{rep_received, User, ARs} ->
-% 	    d("await_rep -> received rep(s)"),
-% 	    N1 = await_rep1(N, ARs),
-% 	    await_rep(User, N1, Timeout - (tim() - T))
-%     after Timeout ->
-% 	    exit({await_rep_timeout, N})
-%     end;
-% await_rep(User, N, infinity) when N > 0 ->
-%     d("await_rep -> entry with N: ~p", [N]),
-%     receive
-% 	{rep_received, User, ARs} ->
-% 	    d("await_rep -> received rep(s)"),
-% 	    N1 = await_rep1(N, ARs),
-% 	    await_rep(User, N1, infinity)
-%     end.
-
-% await_rep1(N, []) when N >= 0 ->
-%     N;
-% await_rep1(N, [AR|ARs]) when N > 0, record(AR, 'ActionReply') ->
-%     await_rep1(N-1, ARs);
-% await_rep1(N, ARs) ->
-%     exit({unexpected_rep_result, N, ARs}).
 
 tim() ->
-    {A,B,C} = erlang:now(),
+    {A,B,C} = erlang:timestamp(),
     A*1000000000+B*1000+(C div 1000).
 
 
@@ -9290,7 +9361,8 @@ await_completion(Ids) ->
             d("OK => Reply: ~n~p", [Reply]),
             ok;
         {error, Reply} ->
-            d("ERROR => Reply: ~n~p", [Reply]),
+            e("await completion failed: "
+              "~n   ~p", [Reply]),
             ?ERROR({failed, Reply})
     end.
 
@@ -9300,7 +9372,9 @@ await_completion(Ids, Timeout) ->
             d("OK => Reply: ~n~p", [Reply]),
             ok;
         {error, Reply} ->
-            d("ERROR => Reply: ~n~p", [Reply]),
+            e("await completion failed: "
+              "~n   ~p"
+              "~n   ~p", [Timeout, Reply]),
             ?ERROR({failed, Reply})
     end.
 
@@ -9309,64 +9383,71 @@ await_completion(Ids, Timeout) ->
 
 sleep(X) -> receive after X -> ok end.
 
-error_msg(F,A) -> error_logger:error_msg(F ++ "~n",A).
+%% error_msg(F,A) -> error_logger:error_msg(F ++ "~n",A).
 
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+%% e(F) ->
+%%     e(F, []).
+
+e(F, A) ->
+    print(error, "ERR", F, A).
+
 
 i(F) ->
     i(F, []).
 
 i(F, A) ->
-    print(info, get(verbosity), now(), get(tc), "INF", F, A).
+    print(info, "INF", F, A).
 
 
 d(F) ->
     d(F, []).
 
 d(F, A) ->
-    print(debug, get(verbosity), now(), get(tc), "DBG", F, A).
+    print(debug, "DBG", F, A).
 
 
-printable(_, debug)   -> true;
-printable(info, info) -> true;
-printable(_,_)        -> false.
+print(Severity, P, F, A) ->
+    print2(printable(Severity), P, F, A).
 
-print(Severity, Verbosity, Ts, Tc, P, F, A) ->
-    print(printable(Severity,Verbosity), Ts, Tc, P, F, A).
+printable(Sev) ->
+    printable(Sev, get(verbosity)).
 
-print(true, Ts, Tc, P, F, A) ->
-    io:format("*** [~s] ~s ~p ~s:~w ***"
-	      "~n   " ++ F ++ "~n", 
-	      [format_timestamp(Ts), P, self(), get(tc), Tc | A]);
-print(_, _, _, _, _, _) ->
+printable(_,     debug) -> true;
+printable(info,  info)  -> true;
+printable(error, _)     -> true;
+printable(_,_)          -> false.
+
+
+print2(true, P, F, A) ->
+    TS = erlang:timestamp(),
+    TC = get(tc),
+    S  = ?F("*** [~s] ~s ~p ~w ***"
+            "~n   " ++ F ++ "~n"
+            "~n", [megaco:format_timestamp(TS), P, self(), TC | A]),
+    io:format("~s", [S]),
+    io:format(user, "~s", [S]);
+print2(_, _, _, _) ->
     ok.
 
 
 p(F, A) ->
     io:format("*** [~s] ***"
 	      "~n   " ++ F ++ "~n", 
-	      [format_timestamp(now()) | A]).
+	      [megaco:format_timestamp(erlang:timestamp()) | A]).
+
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-random_init() ->
-    {A,B,C} = now(),
-    random:seed(A,B,C).
+%% random_init() ->
+%%     {A,B,C} = erlang:timestamp(),
+%%     random:seed(A,B,C).
 
-random() ->
-    10 * random:uniform(50).
+%% random() ->
+%%     10 * random:uniform(50).
 
-apply_load_timer() ->
-    erlang:send_after(random(), self(), apply_load_timeout).
-
-
-format_timestamp({_N1, _N2, N3}   = Now) ->
-    {Date, Time}   = calendar:now_to_datetime(Now),
-    {YYYY,MM,DD}   = Date,
-    {Hour,Min,Sec} = Time,
-    FormatDate = 
-        io_lib:format("~.4w:~.2.0w:~.2.0w ~.2.0w:~.2.0w:~.2.0w 4~w",
-                      [YYYY,MM,DD,Hour,Min,Sec,round(N3/1000)]),  
-    lists:flatten(FormatDate).
+%% apply_load_timer() ->
+%%     erlang:send_after(random(), self(), apply_load_timeout).
 

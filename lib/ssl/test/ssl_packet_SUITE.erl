@@ -1,18 +1,19 @@
 %%
 %% %CopyrightBegin%
 %%
-%% Copyright Ericsson AB 2008-2012. All Rights Reserved.
+%% Copyright Ericsson AB 2008-2017. All Rights Reserved.
 %%
-%% The contents of this file are subject to the Erlang Public License,
-%% Version 1.1, (the "License"); you may not use this file except in
-%% compliance with the License. You should have received a copy of the
-%% Erlang Public License along with this software. If not, it can be
-%% retrieved online at http://www.erlang.org/.
+%% Licensed under the Apache License, Version 2.0 (the "License");
+%% you may not use this file except in compliance with the License.
+%% You may obtain a copy of the License at
 %%
-%% Software distributed under the License is distributed on an "AS IS"
-%% basis, WITHOUT WARRANTY OF ANY KIND, either express or implied. See
-%% the License for the specific language governing rights and limitations
-%% under the License.
+%%     http://www.apache.org/licenses/LICENSE-2.0
+%%
+%% Unless required by applicable law or agreed to in writing, software
+%% distributed under the License is distributed on an "AS IS" BASIS,
+%% WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+%% See the License for the specific language governing permissions and
+%% limitations under the License.
 %%
 %% %CopyrightEnd%
 %%
@@ -37,116 +38,51 @@
 -define(uint24(X), << ?UINT24(X) >> ).
 -define(uint32(X), << ?UINT32(X) >> ).
 -define(uint64(X), << ?UINT64(X) >> ).
--define(TIMEOUT, 120000).
 
 -define(MANY, 1000).
 -define(SOME, 50).
-
-%% Test server callback functions
-%%--------------------------------------------------------------------
-%% Function: init_per_suite(Config) -> Config
-%% Config - [tuple()]
-%%   A list of key/value pairs, holding the test case configuration.
-%% Description: Initialization before the whole suite
-%%
-%% Note: This function is free to add any key/value pairs to the Config
-%% variable, but should NOT alter/remove any existing entries.
-%%--------------------------------------------------------------------
-init_per_suite(Config) ->
-    catch crypto:stop(),
-    try crypto:start() of
-	ok ->
-	    application:start(public_key),
-	    ssl:start(),
-	    Result =
-		(catch make_certs:all(?config(data_dir, Config),
-				      ?config(priv_dir, Config))),
-	    test_server:format("Make certs  ~p~n", [Result]),
-	    ssl_test_lib:cert_options(Config)
-    catch _:_ ->
-	    {skip, "Crypto did not start"}
-    end.
-%%--------------------------------------------------------------------
-%% Function: end_per_suite(Config) -> _
-%% Config - [tuple()]
-%%   A list of key/value pairs, holding the test case configuration.
-%% Description: Cleanup after the whole suite
-%%--------------------------------------------------------------------
-end_per_suite(_Config) ->
-    ssl:stop(),
-    application:stop(crypto).
+-define(BASE_TIMEOUT_SECONDS, 5).
+-define(SOME_SCALE, 2).
+-define(MANY_SCALE, 3).
 
 %%--------------------------------------------------------------------
-%% Function: init_per_testcase(TestCase, Config) -> Config
-%% Case - atom()
-%%   Name of the test case that is about to be run.
-%% Config - [tuple()]
-%%   A list of key/value pairs, holding the test case configuration.
-%%
-%% Description: Initialization before each test case
-%%
-%% Note: This function is free to add any key/value pairs to the Config
-%% variable, but should NOT alter/remove any existing entries.
-%% Description: Initialization before each test case
+%% Common Test interface functions -----------------------------------
 %%--------------------------------------------------------------------
-init_per_testcase(_TestCase, Config0) ->
-    Config = lists:keydelete(watchdog, 1, Config0),
-    Dog = ssl_test_lib:timetrap(?TIMEOUT),
-    [{watchdog, Dog} | Config].
-
-%%--------------------------------------------------------------------
-%% Function: end_per_testcase(TestCase, Config) -> _
-%% Case - atom()
-%%   Name of the test case that is about to be run.
-%% Config - [tuple()]
-%%   A list of key/value pairs, holding the test case configuration.
-%% Description: Cleanup after each test case
-%%--------------------------------------------------------------------
-end_per_testcase(_TestCase, Config) ->
-    Dog = ?config(watchdog, Config),
-    case Dog of 
-	undefined ->
-	    ok;
-	_ ->
-	    test_server:timetrap_cancel(Dog)
-    end.
-
-%%--------------------------------------------------------------------
-%% Function: all(Clause) -> TestCases
-%% Clause - atom() - suite | doc
-%% TestCases - [Case] 
-%% Case - atom()
-%%   Name of a test case.
-%% Description: Returns a list of all test cases in this test suite
-%%--------------------------------------------------------------------
-suite() -> [{ct_hooks,[ts_install_cth]}].
-
 all() -> 
     [
      {group, 'tlsv1.2'},
      {group, 'tlsv1.1'},
      {group, 'tlsv1'},
-     {group, 'sslv3'}
+     {group, 'sslv3'},
+     {group, 'dtlsv1.2'},
+     {group, 'dtlsv1'}
     ].
 
 groups() ->
-    [{'tlsv1.2', [], packet_tests()},
-     {'tlsv1.1', [], packet_tests()},
-     {'tlsv1', [], packet_tests()},
-     {'sslv3', [], packet_tests()}].
+    [{'tlsv1.2', [], socket_packet_tests() ++ protocol_packet_tests()},
+     {'tlsv1.1', [], socket_packet_tests() ++ protocol_packet_tests()},
+     {'tlsv1', [], socket_packet_tests() ++ protocol_packet_tests()},
+     {'sslv3', [], socket_packet_tests() ++ protocol_packet_tests()},
+     %% We will not support any packet types if the transport is
+     %% not reliable. We might support it for DTLS over SCTP in the future 
+     {'dtlsv1.2', [], [reject_packet_opt]},
+     {'dtlsv1', [],  [reject_packet_opt]}
+    ].
 
-packet_tests() ->
-    active_packet_tests() ++ active_once_packet_tests() ++ passive_packet_tests() ++
-	[packet_send_to_large,
-	 packet_cdr_decode, packet_cdr_decode_list,
+socket_packet_tests() ->
+    socket_active_packet_tests() ++ socket_active_once_packet_tests() ++ 
+        socket_passive_packet_tests() ++ [packet_send_to_large, packet_tpkt_decode, packet_tpkt_decode_list].
+
+protocol_packet_tests() ->
+    protocol_active_packet_tests() ++ protocol_active_once_packet_tests() ++ protocol_passive_packet_tests() ++
+	[packet_cdr_decode, packet_cdr_decode_list,
 	 packet_http_decode, packet_http_decode_list,
 	 packet_http_bin_decode_multi,
 	 packet_line_decode, packet_line_decode_list,
 	 packet_asn1_decode, packet_asn1_decode_list,
-	 packet_tpkt_decode, packet_tpkt_decode_list,
 	 packet_sunrm_decode, packet_sunrm_decode_list].
 
-passive_packet_tests() ->
+socket_passive_packet_tests() ->
     [packet_raw_passive_many_small,
      packet_0_passive_many_small,
      packet_1_passive_many_small,
@@ -157,12 +93,8 @@ passive_packet_tests() ->
      packet_1_passive_some_big,
      packet_2_passive_some_big,
      packet_4_passive_some_big,
-     packet_httph_passive,
-     packet_httph_bin_passive,
-     packet_http_error_passive,
      packet_wait_passive,
      packet_size_passive,
-     packet_baddata_passive,
      %% inet header option should be deprecated!
      header_decode_one_byte_passive,
      header_decode_two_bytes_passive,
@@ -170,7 +102,14 @@ passive_packet_tests() ->
      header_decode_two_bytes_one_sent_passive
     ].
 
-active_once_packet_tests() ->
+protocol_passive_packet_tests() ->
+    [packet_httph_passive,
+     packet_httph_bin_passive,
+     packet_http_error_passive,
+     packet_baddata_passive
+    ].
+
+socket_active_once_packet_tests() ->
     [packet_raw_active_once_many_small,
      packet_0_active_once_many_small,
      packet_1_active_once_many_small,
@@ -180,12 +119,16 @@ active_once_packet_tests() ->
      packet_0_active_once_some_big,
      packet_1_active_once_some_big,
      packet_2_active_once_some_big,
-     packet_4_active_once_some_big,
+     packet_4_active_once_some_big
+    ].
+
+protocol_active_once_packet_tests() ->
+    [
      packet_httph_active_once,
      packet_httph_bin_active_once
     ].
 
-active_packet_tests() ->
+socket_active_packet_tests() ->
     [packet_raw_active_many_small,
      packet_0_active_many_small,
      packet_1_active_many_small,
@@ -196,11 +139,9 @@ active_packet_tests() ->
      packet_1_active_some_big,
      packet_2_active_some_big,
      packet_4_active_some_big,
-     packet_httph_active,
-     packet_httph_bin_active,
      packet_wait_active,
-     packet_baddata_active,
      packet_size_active,
+     packet_switch,
      %% inet header option should be deprecated!
      header_decode_one_byte_active,
      header_decode_two_bytes_active,
@@ -209,1055 +150,340 @@ active_packet_tests() ->
     ].
 
 
+protocol_active_packet_tests() ->
+    [packet_httph_active,
+     packet_httph_bin_active,
+     packet_baddata_active
+    ].
+
+init_per_suite(Config) ->
+    catch crypto:stop(),
+    try crypto:start() of
+	ok ->
+	    ssl_test_lib:clean_start(),
+	    {ok, _} = make_certs:all(proplists:get_value(data_dir, Config),
+				     proplists:get_value(priv_dir, Config)),
+	    ssl_test_lib:cert_options(Config)
+    catch _:_ ->
+	    {skip, "Crypto did not start"}
+    end.
+
+end_per_suite(_Config) ->
+    ssl:stop(),
+    application:stop(crypto).
+
 init_per_group(GroupName, Config) ->
     case ssl_test_lib:is_tls_version(GroupName) of
 	true ->
 	    case ssl_test_lib:sufficient_crypto_support(GroupName) of
 		true ->
-		    ssl_test_lib:init_tls_version(GroupName),
-		    Config;
+		    ssl_test_lib:init_tls_version(GroupName, Config);
 		false ->
 		    {skip, "Missing crypto support"}
 	    end;
 	_ ->
+	    ssl:stop(),
 	    ssl:start(),
 	    Config
     end.
 
 
-end_per_group(_GroupName, Config) ->
+end_per_group(GroupName, Config) ->
+    case ssl_test_lib:is_tls_version(GroupName) of
+        true ->
+            ssl_test_lib:clean_tls_version(Config);
+        false ->
+            Config
+    end.
+
+init_per_testcase(_TestCase, Config) ->
+    ct:timetrap({seconds, ?BASE_TIMEOUT_SECONDS}),
     Config.
 
 
-%% Test cases starts here.
+end_per_testcase(_TestCase, Config) ->
+    Config.
+
 %%--------------------------------------------------------------------
-packet_raw_passive_many_small(doc) -> 
-    ["Test packet option {packet, raw} in passive mode."];
+%% Test Cases --------------------------------------------------------
+%%--------------------------------------------------------------------
 
-packet_raw_passive_many_small(suite) -> 
-    [];
+packet_raw_passive_many_small() ->
+    [{doc,"Test packet option {packet, raw} in passive mode."}].
 
-packet_raw_passive_many_small(Config) when is_list(Config) -> 
-    ClientOpts = ?config(client_opts, Config),
-    ServerOpts = ?config(server_opts, Config),
-    {ClientNode, ServerNode, Hostname} = ssl_test_lib:run_where(Config),
-
+packet_raw_passive_many_small(Config) when is_list(Config) ->
+    ct:timetrap({seconds, ?BASE_TIMEOUT_SECONDS * ?MANY_SCALE}),
     Data = "Packet option is {packet, raw}",
-
-    Server = ssl_test_lib:start_server([{node, ClientNode}, {port, 0},
-					{from, self()}, 
-					{mfa, {?MODULE, send_raw ,[Data, ?MANY]}},
-					{options, ServerOpts}]),
-    Port = ssl_test_lib:inet_port(Server),
-    Client = ssl_test_lib:start_client([{node, ServerNode}, {port, Port}, 
-					{host, Hostname},
-					{from, self()},
-					{mfa, {?MODULE, passive_raw, [Data, ?MANY]}},
-					{options, 
-					 [{active, false},
-					  {packet, raw} | 
-					  ClientOpts]}]),
-
-    ssl_test_lib:check_result(Client, ok),
-
-    ssl_test_lib:close(Server),
-    ssl_test_lib:close(Client).
+    packet(Config, Data, send, passive_raw, ?MANY, raw, false).
 
 %%--------------------------------------------------------------------
 
-packet_raw_passive_some_big(doc) -> 
-    ["Test packet option {packet, raw} in passive mode."];
+packet_raw_passive_some_big() ->
+    [{doc,"Test packet option {packet, raw} in passive mode."}].
 
-packet_raw_passive_some_big(suite) -> 
-    [];
-
-packet_raw_passive_some_big(Config) when is_list(Config) -> 
-    ClientOpts = ?config(client_opts, Config),
-    ServerOpts = ?config(server_opts, Config),
-    {ClientNode, ServerNode, Hostname} = ssl_test_lib:run_where(Config),
-
+packet_raw_passive_some_big(Config) when is_list(Config) ->
+    ct:timetrap({seconds, ?BASE_TIMEOUT_SECONDS * ?SOME_SCALE}),
     Data = lists:append(lists:duplicate(100, "1234567890")),
-
-    Server = ssl_test_lib:start_server([{node, ClientNode}, {port, 0},
-					{from, self()}, 
-					{mfa, {?MODULE, send_raw ,[Data, ?SOME]}},
-					{options, ServerOpts}]),
-    Port = ssl_test_lib:inet_port(Server),
-    Client = ssl_test_lib:start_client([{node, ServerNode}, {port, Port}, 
-					{host, Hostname},
-					{from, self()},
-					{mfa, {?MODULE, passive_raw, [Data, ?SOME]}},
-					{options, 
-					 [{active, false},
-					  {packet, raw} | 
-					  ClientOpts]}]),
-
-    ssl_test_lib:check_result(Client, ok),
-
-    ssl_test_lib:close(Server),
-    ssl_test_lib:close(Client).
-
+    packet(Config, Data, send, passive_raw, ?SOME, raw, false).
 %%--------------------------------------------------------------------
-packet_0_passive_many_small(doc) -> 
-    ["Test packet option {packet, 0} in passive mode."];
+packet_0_passive_many_small() ->
+    [{doc,"Test packet option {packet, 0} in passive mode."}].
 
-packet_0_passive_many_small(suite) -> 
-    [];
-
-packet_0_passive_many_small(Config) when is_list(Config) -> 
-    ClientOpts = ?config(client_opts, Config),
-    ServerOpts = ?config(server_opts, Config),
-    {ClientNode, ServerNode, Hostname} = ssl_test_lib:run_where(Config),
-
+packet_0_passive_many_small(Config) when is_list(Config) ->
+    ct:timetrap({seconds, ?BASE_TIMEOUT_SECONDS * ?MANY_SCALE}),
     Data = "Packet option is {packet, 0}, equivalent to packet raw.",
-
-    Server = ssl_test_lib:start_server([{node, ClientNode}, {port, 0}, 
-					{from, self()}, 
-					{mfa, {?MODULE, send_raw ,[Data, ?MANY]}},
-					{options, ServerOpts}]),
-    Port = ssl_test_lib:inet_port(Server),
-    Client = ssl_test_lib:start_client([{node, ServerNode}, {port, Port}, 
-					{host, Hostname},
-					{from, self()},
-					{mfa, {?MODULE, passive_raw, [Data, ?MANY]}},
-					{options, [{active, false},
-						   {packet, 0} | 
-						   ClientOpts]}]),
-
-    ssl_test_lib:check_result(Client, ok),
-
-    ssl_test_lib:close(Server),
-    ssl_test_lib:close(Client).
+    packet(Config, Data, send, passive_raw, ?MANY, 0, false).
 
 %%--------------------------------------------------------------------
-packet_0_passive_some_big(doc) -> 
-    ["Test packet option {packet, 0} in passive mode."];
+packet_0_passive_some_big() ->
+    [{doc,"Test packet option {packet, 0} in passive mode."}].
 
-packet_0_passive_some_big(suite) -> 
-    [];
-
-packet_0_passive_some_big(Config) when is_list(Config) -> 
-    ClientOpts = ?config(client_opts, Config),
-    ServerOpts = ?config(server_opts, Config),
-    {ClientNode, ServerNode, Hostname} = ssl_test_lib:run_where(Config),
-
+packet_0_passive_some_big(Config) when is_list(Config) ->
+    ct:timetrap({seconds, ?BASE_TIMEOUT_SECONDS * ?SOME_SCALE}),
     Data = lists:append(lists:duplicate(100, "1234567890")),
-
-    Server = ssl_test_lib:start_server([{node, ClientNode}, {port, 0}, 
-					{from, self()}, 
-					{mfa, {?MODULE, send_raw ,[Data, ?SOME]}},
-					{options, ServerOpts}]),
-    Port = ssl_test_lib:inet_port(Server),
-    Client = ssl_test_lib:start_client([{node, ServerNode}, {port, Port}, 
-					{host, Hostname},
-					{from, self()},
-					{mfa, {?MODULE, passive_raw, [Data, ?SOME]}},
-					{options, [{active, false},
-						   {packet, 0} | 
-						   ClientOpts]}]),
-
-    ssl_test_lib:check_result(Client, ok),
-
-    ssl_test_lib:close(Server),
-    ssl_test_lib:close(Client).
+    packet(Config, Data, send, passive_raw, ?SOME, 0, false).
 
 %%--------------------------------------------------------------------
-packet_1_passive_many_small(doc) -> 
-    ["Test packet option {packet, 1} in passive mode."];
+packet_1_passive_many_small() ->
+    [{doc,"Test packet option {packet, 1} in passive mode."}].
 
-packet_1_passive_many_small(suite) -> 
-    [];
-
-packet_1_passive_many_small(Config) when is_list(Config) -> 
-    ClientOpts = ?config(client_opts, Config),
-    ServerOpts = ?config(server_opts, Config),
-    {ClientNode, ServerNode, Hostname} = ssl_test_lib:run_where(Config),
-
+packet_1_passive_many_small(Config) when is_list(Config) ->
+    ct:timetrap({seconds, ?BASE_TIMEOUT_SECONDS * ?MANY_SCALE}),
     Data = "Packet option is {packet, 1}",
-
-    Server = ssl_test_lib:start_server([{node, ClientNode}, {port, 0}, 
-					{from, self()}, 
-					{mfa, {?MODULE, send, [Data, ?MANY]}},
-					{options, [{packet, 1}|ServerOpts]}]),
-    Port = ssl_test_lib:inet_port(Server),
-    Client = ssl_test_lib:start_client([{node, ServerNode}, {port, Port}, 
-					{host, Hostname},
-					{from, self()},
-					{mfa, {?MODULE, passive_recv_packet,
-					       [Data, ?MANY]}},
-					{options, [{active, false},
-						   {packet, 1} |
-						   ClientOpts]}]),
-
-    ssl_test_lib:check_result(Client, ok),
-
-    ssl_test_lib:close(Server),
-    ssl_test_lib:close(Client).
+    packet(Config, Data, send, passive_recv_packet, ?MANY, 1, false).
 
 %%--------------------------------------------------------------------
-packet_1_passive_some_big(doc) -> 
-    ["Test packet option {packet, 1} in passive mode."];
+packet_1_passive_some_big() ->
+    [{doc,"Test packet option {packet, 1} in passive mode."}].
 
-packet_1_passive_some_big(suite) -> 
-    [];
-
-packet_1_passive_some_big(Config) when is_list(Config) -> 
-    ClientOpts = ?config(client_opts, Config),
-    ServerOpts = ?config(server_opts, Config),
-    {ClientNode, ServerNode, Hostname} = ssl_test_lib:run_where(Config),
-
+packet_1_passive_some_big(Config) when is_list(Config) ->
+    ct:timetrap({seconds, ?BASE_TIMEOUT_SECONDS * ?SOME_SCALE}),
     Data = lists:append(lists:duplicate(255, "1")),
-
-    Server = ssl_test_lib:start_server([{node, ClientNode}, {port, 0}, 
-					{from, self()}, 
-					{mfa, {?MODULE, send, [Data, ?SOME]}},
-					{options, [{packet, 1}|ServerOpts]}]),
-    Port = ssl_test_lib:inet_port(Server),
-    Client = ssl_test_lib:start_client([{node, ServerNode}, {port, Port}, 
-					{host, Hostname},
-					{from, self()},
-					{mfa, {?MODULE, passive_recv_packet,
-					       [Data, ?SOME]}},
-					{options, [{active, false},
-						   {packet, 1} |
-						   ClientOpts]}]),
-
-    ssl_test_lib:check_result(Client, ok),
-
-    ssl_test_lib:close(Server),
-    ssl_test_lib:close(Client).
+    packet(Config, Data, send, passive_recv_packet, ?SOME, 1, false).
 
 %%--------------------------------------------------------------------
-packet_2_passive_many_small(doc) -> 
-    ["Test packet option {packet, 2} in passive mode"];
+packet_2_passive_many_small() ->
+    [{doc,"Test packet option {packet, 2} in passive mode"}].
 
-packet_2_passive_many_small(suite) -> 
-    [];
-
-packet_2_passive_many_small(Config) when is_list(Config) -> 
-    ClientOpts = ?config(client_opts, Config),
-    ServerOpts = ?config(server_opts, Config),
-    {ClientNode, ServerNode, Hostname} = ssl_test_lib:run_where(Config),
-
+packet_2_passive_many_small(Config) when is_list(Config) ->
+    ct:timetrap({seconds, ?BASE_TIMEOUT_SECONDS * ?MANY_SCALE}),
     Data = "Packet option is {packet, 2}",
-
-    Server = ssl_test_lib:start_server([{node, ClientNode}, {port, 0}, 
-					{from, self()}, 
-					{mfa, {?MODULE, send, [Data, ?MANY]}},
-					{options, [{packet, 2}|ServerOpts]}]),
-    Port = ssl_test_lib:inet_port(Server),
-    Client = ssl_test_lib:start_client([{node, ServerNode}, {port, Port}, 
-					{host, Hostname},
-					{from, self()},
-					{mfa, {?MODULE, passive_recv_packet,
-					       [Data, ?MANY]}},
-					{options, [{active, false},
-						   {packet, 2} | 
-						   ClientOpts]}]),
-
-    ssl_test_lib:check_result(Client, ok),
-
-    ssl_test_lib:close(Server),
-    ssl_test_lib:close(Client).
+    packet(Config, Data, send, passive_recv_packet, ?MANY, 2, false).
 
 %%--------------------------------------------------------------------
-packet_2_passive_some_big(doc) -> 
-    ["Test packet option {packet, 2} in passive mode"];
+packet_2_passive_some_big() ->
+    [{doc,"Test packet option {packet, 2} in passive mode"}].
 
-packet_2_passive_some_big(suite) -> 
-    [];
-
-packet_2_passive_some_big(Config) when is_list(Config) -> 
-    ClientOpts = ?config(client_opts, Config),
-    ServerOpts = ?config(server_opts, Config),
-    {ClientNode, ServerNode, Hostname} = ssl_test_lib:run_where(Config),
-
+packet_2_passive_some_big(Config) when is_list(Config) ->
+    ct:timetrap({seconds, ?BASE_TIMEOUT_SECONDS * ?SOME_SCALE}),
     Data = lists:append(lists:duplicate(100, "1234567890")),
-
-    Server = ssl_test_lib:start_server([{node, ClientNode}, {port, 0}, 
-					{from, self()}, 
-					{mfa, {?MODULE, send, [Data, ?SOME]}},
-					{options, [{packet, 2}|ServerOpts]}]),
-    Port = ssl_test_lib:inet_port(Server),
-    Client = ssl_test_lib:start_client([{node, ServerNode}, {port, Port}, 
-					{host, Hostname},
-					{from, self()},
-					{mfa, {?MODULE, passive_recv_packet,
-					       [Data, ?SOME]}},
-					{options, [{active, false},
-						   {packet, 2} | 
-						   ClientOpts]}]),
-
-    ssl_test_lib:check_result(Client, ok),
-
-    ssl_test_lib:close(Server),
-    ssl_test_lib:close(Client).
+    packet(Config, Data, send, passive_recv_packet, ?SOME, 2, false).
 
 %%--------------------------------------------------------------------
-packet_4_passive_many_small(doc) -> 
-    ["Test packet option {packet, 4} in passive mode"];
+packet_4_passive_many_small() ->
+    [{doc,"Test packet option {packet, 4} in passive mode"}].
 
-packet_4_passive_many_small(suite) -> 
-    [];
-
-packet_4_passive_many_small(Config) when is_list(Config) -> 
-    ClientOpts = ?config(client_opts, Config),
-    ServerOpts = ?config(server_opts, Config),
-    {ClientNode, ServerNode, Hostname} = ssl_test_lib:run_where(Config),
-
+packet_4_passive_many_small(Config) when is_list(Config) ->
+    ct:timetrap({seconds, ?BASE_TIMEOUT_SECONDS * ?MANY_SCALE}),
     Data = "Packet option is {packet, 4}",
-
-    Server = ssl_test_lib:start_server([{node, ClientNode}, {port, 0}, 
-					{from, self()}, 
-					{mfa, 
-					 {?MODULE, send, [Data, ?MANY]}},
-					{options, [{packet, 4}|ServerOpts]}]),
-    Port = ssl_test_lib:inet_port(Server),
-    Client = ssl_test_lib:start_client([{node, ServerNode}, {port, Port}, 
-					{host, Hostname},
-					{from, self()},
-					{mfa, {?MODULE, passive_recv_packet,
-					       [Data, ?MANY]}},
-					{options, [{active, false},
-						   {packet, 4} | 
-						   ClientOpts]}]),
-
-    ssl_test_lib:check_result(Client, ok),
-
-    ssl_test_lib:close(Server),
-    ssl_test_lib:close(Client).
+    packet(Config, Data, send, passive_recv_packet, ?MANY, 4, false).
 
 %%--------------------------------------------------------------------
-packet_4_passive_some_big(doc) -> 
-    ["Test packet option {packet, 4} in passive mode"];
+packet_4_passive_some_big() ->
+    [{doc,"Test packet option {packet, 4} in passive mode"}].
 
-packet_4_passive_some_big(suite) -> 
-    [];
-
-packet_4_passive_some_big(Config) when is_list(Config) -> 
-    ClientOpts = ?config(client_opts, Config),
-    ServerOpts = ?config(server_opts, Config),
-    {ClientNode, ServerNode, Hostname} = ssl_test_lib:run_where(Config),
-
+packet_4_passive_some_big(Config) when is_list(Config) ->
+    ct:timetrap({seconds, ?BASE_TIMEOUT_SECONDS * ?SOME_SCALE}),
     Data = lists:append(lists:duplicate(100, "1234567890")),
-
-    Server = ssl_test_lib:start_server([{node, ClientNode}, {port, 0}, 
-					{from, self()}, 
-					{mfa, {?MODULE, send, [Data, ?SOME]}},
-					{options, [{packet, 4}|ServerOpts]}]),
-    Port = ssl_test_lib:inet_port(Server),
-    Client = ssl_test_lib:start_client([{node, ServerNode}, {port, Port}, 
-					{host, Hostname},
-					{from, self()},
-					{mfa, {?MODULE, passive_recv_packet,
-					       [Data, ?SOME]}},
-					{options, [{active, false},
-						   {packet, 4} | 
-						   ClientOpts]}]),
-
-    ssl_test_lib:check_result(Client, ok),
-
-    ssl_test_lib:close(Server),
-    ssl_test_lib:close(Client).
-
+    packet(Config, Data, send, passive_recv_packet, ?SOME, 4, false).
 
 %%--------------------------------------------------------------------
-packet_raw_active_once_many_small(doc) -> 
-    ["Test packet option {packet, raw} in active once mode."];
+packet_raw_active_once_many_small() ->
+    [{doc,"Test packet option {packet, raw} in active once mode."}].
 
-packet_raw_active_once_many_small(suite) -> 
-    [];
-
-packet_raw_active_once_many_small(Config) when is_list(Config) -> 
-    ClientOpts = ?config(client_opts, Config),
-    ServerOpts = ?config(server_opts, Config),
-    {ClientNode, ServerNode, Hostname} = ssl_test_lib:run_where(Config),
-
+packet_raw_active_once_many_small(Config) when is_list(Config) ->
+    ct:timetrap({seconds, ?BASE_TIMEOUT_SECONDS * ?MANY_SCALE}),
     Data = "Packet option is {packet, raw}",
-
-    Server = ssl_test_lib:start_server([{node, ClientNode}, {port, 0},
-					{from, self()}, 
-					{mfa, {?MODULE, send_raw ,[Data, ?MANY]}},
-					{options, ServerOpts}]),
-    Port = ssl_test_lib:inet_port(Server),
-    Client = ssl_test_lib:start_client([{node, ServerNode}, {port, Port}, 
-					{host, Hostname},
-					{from, self()},
-					{mfa, {?MODULE, active_once_raw, 
-					       [Data, ?MANY]}},
-					{options, [{active, once},
-						   {packet, raw} | 
-						   ClientOpts]}]),
-
-    ssl_test_lib:check_result(Client, ok),
-
-    ssl_test_lib:close(Server),
-    ssl_test_lib:close(Client).
+    packet(Config, Data, send_raw, active_once_raw, ?MANY, raw, once).
 
 %%--------------------------------------------------------------------
-packet_raw_active_once_some_big(doc) -> 
-    ["Test packet option {packet, raw} in active once mode."];
+packet_raw_active_once_some_big() ->
+    [{doc,"Test packet option {packet, raw} in active once mode."}].
 
-packet_raw_active_once_some_big(suite) -> 
-    [];
-
-packet_raw_active_once_some_big(Config) when is_list(Config) -> 
-    ClientOpts = ?config(client_opts, Config),
-    ServerOpts = ?config(server_opts, Config),
-    {ClientNode, ServerNode, Hostname} = ssl_test_lib:run_where(Config),
-
+packet_raw_active_once_some_big(Config) when is_list(Config) ->
+    ct:timetrap({seconds, ?BASE_TIMEOUT_SECONDS * ?SOME_SCALE}),
     Data = lists:append(lists:duplicate(100, "1234567890")),
-
-    Server = ssl_test_lib:start_server([{node, ClientNode}, {port, 0},
-					{from, self()}, 
-					{mfa, {?MODULE, send_raw ,[Data, ?SOME]}},
-					{options, ServerOpts}]),
-    Port = ssl_test_lib:inet_port(Server),
-    Client = ssl_test_lib:start_client([{node, ServerNode}, {port, Port}, 
-					{host, Hostname},
-					{from, self()},
-					{mfa, {?MODULE, active_once_raw, 
-					       [Data, ?SOME]}},
-					{options, [{active, once},
-						   {packet, raw} | 
-						   ClientOpts]}]),
-
-    ssl_test_lib:check_result(Client, ok),
-
-    ssl_test_lib:close(Server),
-    ssl_test_lib:close(Client).
+    packet(Config, Data, send_raw, active_once_raw, ?SOME, raw, once).
 
 %%--------------------------------------------------------------------
-packet_0_active_once_many_small(doc) -> 
-    ["Test packet option {packet, 0} in active once mode."];
+packet_0_active_once_many_small() ->
+    [{doc,"Test packet option {packet, 0} in active once mode."}].
 
-packet_0_active_once_many_small(suite) -> 
-    [];
-
-packet_0_active_once_many_small(Config) when is_list(Config) -> 
-    ClientOpts = ?config(client_opts, Config),
-    ServerOpts = ?config(server_opts, Config),
-    {ClientNode, ServerNode, Hostname} = ssl_test_lib:run_where(Config),
-
+packet_0_active_once_many_small(Config) when is_list(Config) ->
+    ct:timetrap({seconds, ?BASE_TIMEOUT_SECONDS * ?MANY_SCALE}),
     Data = "Packet option is {packet, 0}",
-
-    Server = ssl_test_lib:start_server([{node, ClientNode}, {port, 0},
-					{from, self()}, 
-					{mfa, {?MODULE, send_raw ,[Data, ?MANY]}},
-					{options, ServerOpts}]),
-    Port = ssl_test_lib:inet_port(Server),
-    Client = ssl_test_lib:start_client([{node, ServerNode}, {port, Port}, 
-					{host, Hostname},
-					{from, self()}, 
-					{mfa, 
-					 {?MODULE, active_once_raw, 
-					  [Data, ?MANY]}},
-					{options, [{active, once},
-						   {packet, 0} | 
-						   ClientOpts]}]),
-
-    ssl_test_lib:check_result(Client, ok),
-
-    ssl_test_lib:close(Server),
-    ssl_test_lib:close(Client).
-
+    packet(Config, Data, send_raw, active_once_raw, ?MANY, 0, once).
 
 %%--------------------------------------------------------------------
-packet_0_active_once_some_big(doc) -> 
-    ["Test packet option {packet, 0} in active once mode."];
+packet_0_active_once_some_big() ->
+    [{doc,"Test packet option {packet, 0} in active once mode."}].
 
-packet_0_active_once_some_big(suite) -> 
-    [];
-
-packet_0_active_once_some_big(Config) when is_list(Config) -> 
-    ClientOpts = ?config(client_opts, Config),
-    ServerOpts = ?config(server_opts, Config),
-    {ClientNode, ServerNode, Hostname} = ssl_test_lib:run_where(Config),
-
+packet_0_active_once_some_big(Config) when is_list(Config) ->
+    ct:timetrap({seconds, ?BASE_TIMEOUT_SECONDS * ?SOME_SCALE}),
     Data = lists:append(lists:duplicate(100, "1234567890")),
-
-    Server = ssl_test_lib:start_server([{node, ClientNode}, {port, 0},
-					{from, self()}, 
-					{mfa, {?MODULE, send_raw ,
-					       [Data, ?SOME]}},
-					{options, ServerOpts}]),
-    Port = ssl_test_lib:inet_port(Server),
-    Client = ssl_test_lib:start_client([{node, ServerNode}, {port, Port}, 
-					{host, Hostname},
-					{from, self()}, 
-					{mfa, 
-					 {?MODULE, active_once_raw,
-					  [Data, ?SOME]}},
-					{options, [{active, once},
-						   {packet, 0} | 
-						   ClientOpts]}]),
-
-    ssl_test_lib:check_result(Client, ok),
-
-    ssl_test_lib:close(Server),
-    ssl_test_lib:close(Client).
+    packet(Config, Data, send_raw, active_once_raw, ?SOME, 0, once).
 
 %%--------------------------------------------------------------------
-packet_1_active_once_many_small(doc) -> 
-    ["Test packet option {packet, 1} in active once mode."];
+packet_1_active_once_many_small() ->
+    [{doc,"Test packet option {packet, 1} in active once mode."}].
 
-packet_1_active_once_many_small(suite) -> 
-    [];
-
-packet_1_active_once_many_small(Config) when is_list(Config) -> 
-    ClientOpts = ?config(client_opts, Config),
-    ServerOpts = ?config(server_opts, Config),
-    {ClientNode, ServerNode, Hostname} = ssl_test_lib:run_where(Config),
-
+packet_1_active_once_many_small(Config) when is_list(Config) ->
     Data = "Packet option is {packet, 1}",
-
-    Server = ssl_test_lib:start_server([{node, ClientNode}, {port, 0}, 
-					{from, self()}, 
-					{mfa, {?MODULE, send, [Data, ?MANY]}},
-					{options, [{packet, 1}|ServerOpts]}]),
-    Port = ssl_test_lib:inet_port(Server),
-    Client = ssl_test_lib:start_client([{node, ServerNode}, {port, Port}, 
-					{host, Hostname},
-					{from, self()}, 
-					{mfa, 
-					 {?MODULE, 
-					  active_once_packet, 
-					  [Data, ?MANY]}},
-					{options, [{active, once},
-						   {packet, 1} |
-						   ClientOpts]}]),
-
-    ssl_test_lib:check_result(Client, ok),
-
-    ssl_test_lib:close(Server),
-    ssl_test_lib:close(Client).
+    packet(Config, Data, send, active_once_packet, ?MANY, 1, once).
 
 %%--------------------------------------------------------------------
-packet_1_active_once_some_big(doc) -> 
-    ["Test packet option {packet, 1} in active once mode."];
+packet_1_active_once_some_big() ->
+    [{doc,"Test packet option {packet, 1} in active once mode."}].
 
-packet_1_active_once_some_big(suite) -> 
-    [];
-
-packet_1_active_once_some_big(Config) when is_list(Config) -> 
-    ClientOpts = ?config(client_opts, Config),
-    ServerOpts = ?config(server_opts, Config),
-    {ClientNode, ServerNode, Hostname} = ssl_test_lib:run_where(Config),
-
+packet_1_active_once_some_big(Config) when is_list(Config) ->
+    ct:timetrap({seconds, ?BASE_TIMEOUT_SECONDS * ?SOME_SCALE}),
     Data = lists:append(lists:duplicate(255, "1")),
+    packet(Config, Data, send, active_once_packet, ?SOME, 1, once).
 
-    Server = ssl_test_lib:start_server([{node, ClientNode}, {port, 0}, 
-					{from, self()}, 
-					{mfa, {?MODULE, send, [Data, ?SOME]}},
-					{options, [{packet, 1}|ServerOpts]}]),
-    Port = ssl_test_lib:inet_port(Server),
-    Client = ssl_test_lib:start_client([{node, ServerNode}, {port, Port}, 
-					{host, Hostname},
-					{from, self()},
-					{mfa, 
-					 {?MODULE, 
-					  active_once_packet,
-					  [Data, ?SOME]}},
-					{options, [{active, once},
-						   {packet, 1} |
-						   ClientOpts]}]),
-
-    ssl_test_lib:check_result(Client, ok),
-
-    ssl_test_lib:close(Server),
-    ssl_test_lib:close(Client).
 
 %%--------------------------------------------------------------------
-packet_2_active_once_many_small(doc) -> 
-    ["Test packet option {packet, 2} in active once mode"];
+packet_2_active_once_many_small() ->
+    [{doc,"Test packet option {packet, 2} in active once mode"}].
 
-packet_2_active_once_many_small(suite) -> 
-    [];
-
-packet_2_active_once_many_small(Config) when is_list(Config) -> 
-    ClientOpts = ?config(client_opts, Config),
-    ServerOpts = ?config(server_opts, Config),
-    {ClientNode, ServerNode, Hostname} = ssl_test_lib:run_where(Config),
-
+packet_2_active_once_many_small(Config) when is_list(Config) ->
+    ct:timetrap({seconds, ?BASE_TIMEOUT_SECONDS * ?MANY_SCALE}),
     Data = "Packet option is {packet, 2}",
-
-    Server = ssl_test_lib:start_server([{node, ClientNode}, {port, 0}, 
-					{from, self()}, 
-					{mfa, {?MODULE, send, [Data, ?MANY]}},
-					{options, [{packet, 2}|ServerOpts]}]),
-    Port = ssl_test_lib:inet_port(Server),
-    Client = ssl_test_lib:start_client([{node, ServerNode}, {port, Port}, 
-					{host, Hostname},
-					{from, self()},
-					{mfa, 
-					 {?MODULE, 
-					  active_once_packet, 
-					  [Data, ?MANY]}},
-					{options, [{active, once},
-						   {packet, 2} |
-						   ClientOpts]}]),
-
-    ssl_test_lib:check_result(Client, ok),
-
-    ssl_test_lib:close(Server),
-    ssl_test_lib:close(Client).
-
+    packet(Config, Data, send, active_once_packet, ?MANY, 2, once).
 
 %%--------------------------------------------------------------------
-packet_2_active_once_some_big(doc) -> 
-    ["Test packet option {packet, 2} in active once mode"];
+packet_2_active_once_some_big() ->
+    [{doc,"Test packet option {packet, 2} in active once mode"}].
 
-packet_2_active_once_some_big(suite) -> 
-    [];
-
-packet_2_active_once_some_big(Config) when is_list(Config) -> 
-    ClientOpts = ?config(client_opts, Config),
-    ServerOpts = ?config(server_opts, Config),
-    {ClientNode, ServerNode, Hostname} = ssl_test_lib:run_where(Config),
-
+packet_2_active_once_some_big(Config) when is_list(Config) ->
+    ct:timetrap({seconds, ?BASE_TIMEOUT_SECONDS * ?SOME_SCALE}),
     Data = lists:append(lists:duplicate(100, "1234567890")),
-
-    Server = ssl_test_lib:start_server([{node, ClientNode}, {port, 0}, 
-					{from, self()}, 
-					{mfa, {?MODULE, send, [Data, ?SOME]}},
-					{options, [{packet, 2}|ServerOpts]}]),
-    Port = ssl_test_lib:inet_port(Server),
-    Client = ssl_test_lib:start_client([{node, ServerNode}, {port, Port}, 
-					{host, Hostname},
-					{from, self()},
-					{mfa, 
-					 {?MODULE, 
-					  active_once_packet,
-					  [Data, ?SOME]}},
-					{options, [{active, once},
-						   {packet, 2} |
-						   ClientOpts]}]),
-
-    ssl_test_lib:check_result(Client, ok),
-
-    ssl_test_lib:close(Server),
-    ssl_test_lib:close(Client).
+    packet(Config, Data, send, active_once_raw, ?SOME, 2, once).
 
 %%--------------------------------------------------------------------
-packet_4_active_once_many_small(doc) -> 
-    ["Test packet option {packet, 4} in active once mode"];
+packet_4_active_once_many_small() ->
+    [{doc,"Test packet option {packet, 4} in active once mode"}].
 
-packet_4_active_once_many_small(suite) -> 
-    [];
-
-packet_4_active_once_many_small(Config) when is_list(Config) -> 
-    ClientOpts = ?config(client_opts, Config),
-    ServerOpts = ?config(server_opts, Config),
-    {ClientNode, ServerNode, Hostname} = ssl_test_lib:run_where(Config),
-
+packet_4_active_once_many_small(Config) when is_list(Config) ->
     Data = "Packet option is {packet, 4}",
-
-    Server = ssl_test_lib:start_server([{node, ClientNode}, {port, 0}, 
-					{from, self()}, 
-					{mfa, {?MODULE, send, [Data, ?MANY]}},
-					{options, [{packet, 4}|ServerOpts]}]),
-    Port = ssl_test_lib:inet_port(Server),
-    Client = ssl_test_lib:start_client([{node, ServerNode}, {port, Port}, 
-					{host, Hostname},
-					{from, self()},
-					{mfa, 
-					 {?MODULE, 
-					  active_once_packet, 
-					  [Data, ?MANY]}},
-					{options, [{active, once},
-						   {packet, 4} |
-						   ClientOpts]}]),
-
-    ssl_test_lib:check_result(Client, ok),
-
-    ssl_test_lib:close(Server),
-    ssl_test_lib:close(Client).
+    ct:timetrap({seconds, ?BASE_TIMEOUT_SECONDS * ?MANY_SCALE}),
+    packet(Config, Data, send, active_once_packet, ?MANY, 4, once).
 
 %%--------------------------------------------------------------------
-packet_4_active_once_some_big(doc) -> 
-    ["Test packet option {packet, 4} in active once mode"];
+packet_4_active_once_some_big() ->
+    [{doc,"Test packet option {packet, 4} in active once mode"}].
 
-packet_4_active_once_some_big(suite) -> 
-    [];
-
-packet_4_active_once_some_big(Config) when is_list(Config) -> 
-    ClientOpts = ?config(client_opts, Config),
-    ServerOpts = ?config(server_opts, Config),
-    {ClientNode, ServerNode, Hostname} = ssl_test_lib:run_where(Config),
-
+packet_4_active_once_some_big(Config) when is_list(Config) ->
+    ct:timetrap({seconds, ?BASE_TIMEOUT_SECONDS * ?SOME_SCALE}),
     Data = lists:append(lists:duplicate(100, "1234567890")),
-
-    Server = ssl_test_lib:start_server([{node, ClientNode}, {port, 0}, 
-					{from, self()}, 
-					{mfa, {?MODULE, send, [Data, ?SOME]}},
-					{options, [{packet, 4}|ServerOpts]}]),
-    Port = ssl_test_lib:inet_port(Server),
-    Client = ssl_test_lib:start_client([{node, ServerNode}, {port, Port}, 
-					{host, Hostname},
-					{from, self()},
-					{mfa, 
-					 {?MODULE, 
-					  active_once_packet, 
-					  [Data, ?SOME]}},
-					{options, [{active, once},
-						   {packet, 4} |
-						   ClientOpts]}]),
-
-    ssl_test_lib:check_result(Client, ok),
-
-    ssl_test_lib:close(Server),
-    ssl_test_lib:close(Client).
+    packet(Config, Data, send, active_once_packet, ?SOME, 4, once).
 
 %%--------------------------------------------------------------------
-packet_raw_active_many_small(doc) -> 
-    ["Test packet option {packet, raw} in active mode."];
-
-packet_raw_active_many_small(suite) -> 
-    [];
+packet_raw_active_many_small() ->
+    [{doc,"Test packet option {packet, raw} in active mode."}].
 
 packet_raw_active_many_small(Config) when is_list(Config) ->
-    ClientOpts = ?config(client_opts, Config),
-    ServerOpts = ?config(server_opts, Config),
-    {ClientNode, ServerNode, Hostname} = ssl_test_lib:run_where(Config),
-
+    ct:timetrap({seconds, ?BASE_TIMEOUT_SECONDS * ?MANY_SCALE}),
     Data = "Packet option is {packet, raw}",
-
-    Server = ssl_test_lib:start_server([{node, ClientNode}, {port, 0},
-					{from, self()}, 
-					{mfa, {?MODULE, send_raw ,[Data, ?MANY]}},
-					{options, ServerOpts}]),
-    Port = ssl_test_lib:inet_port(Server),
-    Client = ssl_test_lib:start_client([{node, ServerNode}, {port, Port}, 
-					{host, Hostname},
-					{from, self()},
-					{mfa, {?MODULE, active_raw,
-					       [Data, ?MANY]}},
-					{options, [{active, true},
-						   {packet, raw} | 
-						   ClientOpts]}]),
-
-    ssl_test_lib:check_result(Client, ok),
-
-    ssl_test_lib:close(Server),
-    ssl_test_lib:close(Client).
-
+    packet(Config, Data, send_raw, active_raw, ?MANY, raw, true).
 
 %%--------------------------------------------------------------------
-packet_raw_active_some_big(doc) -> 
-    ["Test packet option {packet, raw} in active mode."];
-
-packet_raw_active_some_big(suite) -> 
-    [];
+packet_raw_active_some_big() ->
+    [{doc,"Test packet option {packet, raw} in active mode."}].
 
 packet_raw_active_some_big(Config) when is_list(Config) ->
-    ClientOpts = ?config(client_opts, Config),
-    ServerOpts = ?config(server_opts, Config),
-    {ClientNode, ServerNode, Hostname} = ssl_test_lib:run_where(Config),
-
+    ct:timetrap({seconds, ?BASE_TIMEOUT_SECONDS * ?SOME_SCALE}),
     Data = lists:append(lists:duplicate(100, "1234567890")),
-
-    Server = ssl_test_lib:start_server([{node, ClientNode}, {port, 0},
-					{from, self()}, 
-					{mfa, {?MODULE, send_raw ,[Data, ?SOME]}},
-					{options, ServerOpts}]),
-    Port = ssl_test_lib:inet_port(Server),
-    Client = ssl_test_lib:start_client([{node, ServerNode}, {port, Port}, 
-					{host, Hostname},
-					{from, self()},
-					{mfa, {?MODULE, active_raw, [Data, ?SOME]}},
-					{options, [{active, true},
-						   {packet, raw} | 
-						   ClientOpts]}]),
-
-    ssl_test_lib:check_result(Client, ok),
-
-    ssl_test_lib:close(Server),
-    ssl_test_lib:close(Client).
+    packet(Config, Data, send_raw, active_raw, ?SOME, raw, true).
 
 %%--------------------------------------------------------------------
-packet_0_active_many_small(doc) -> 
-    ["Test packet option {packet, 0} in active mode."];
+packet_0_active_many_small() ->
+    [{doc,"Test packet option {packet, 0} in active mode."}].
 
-packet_0_active_many_small(suite) -> 
-    [];
-
-packet_0_active_many_small(Config) when is_list(Config) -> 
-    ClientOpts = ?config(client_opts, Config),
-    ServerOpts = ?config(server_opts, Config),
-    {ClientNode, ServerNode, Hostname} = ssl_test_lib:run_where(Config),
-
+packet_0_active_many_small(Config) when is_list(Config) ->
+    ct:timetrap({seconds, ?BASE_TIMEOUT_SECONDS * ?MANY_SCALE}),
     Data = "Packet option is {packet, 0}",
-
-    Server = ssl_test_lib:start_server([{node, ClientNode}, {port, 0},
-					{from, self()}, 
-					{mfa, {?MODULE, send_raw ,[Data, ?MANY]}},
-					{options, ServerOpts}]),
-    Port = ssl_test_lib:inet_port(Server),
-    Client = ssl_test_lib:start_client([{node, ServerNode}, {port, Port}, 
-					{host, Hostname},
-					{from, self()}, 
-					{mfa, 
-					 {?MODULE, active_raw, 
-					  [Data, ?MANY]}},
-					{options, [{active, true},
-						   {packet, 0} | 
-						   ClientOpts]}]),
-
-    ssl_test_lib:check_result(Client, ok),
-
-    ssl_test_lib:close(Server),
-    ssl_test_lib:close(Client).
+    packet(Config, Data, send_raw, active_raw, ?MANY, 0, true).
 
 %%--------------------------------------------------------------------
-packet_0_active_some_big(doc) -> 
-    ["Test packet option {packet, 0} in active mode."];
+packet_0_active_some_big() ->
+    [{doc,"Test packet option {packet, 0} in active mode."}].
 
-packet_0_active_some_big(suite) -> 
-    [];
-
-packet_0_active_some_big(Config) when is_list(Config) -> 
-    ClientOpts = ?config(client_opts, Config),
-    ServerOpts = ?config(server_opts, Config),
-    {ClientNode, ServerNode, Hostname} = ssl_test_lib:run_where(Config),
-
+packet_0_active_some_big(Config) when is_list(Config) ->
+    ct:timetrap({seconds, ?BASE_TIMEOUT_SECONDS * ?SOME_SCALE}),
     Data = lists:append(lists:duplicate(100, "1234567890")),
-
-    Server = ssl_test_lib:start_server([{node, ClientNode}, {port, 0},
-					{from, self()}, 
-					{mfa, {?MODULE, send_raw ,[Data, ?SOME]}},
-					{options, ServerOpts}]),
-    Port = ssl_test_lib:inet_port(Server),
-    Client = ssl_test_lib:start_client([{node, ServerNode}, {port, Port}, 
-					{host, Hostname},
-					{from, self()}, 
-					{mfa, 
-					 {?MODULE, active_raw, 
-					  [Data, ?SOME]}},
-					{options, [{active, true},
-						   {packet, 0} | 
-						   ClientOpts]}]),
-
-    ssl_test_lib:check_result(Client, ok),
-
-    ssl_test_lib:close(Server),
-    ssl_test_lib:close(Client).
-
+    packet(Config, Data, send, active_raw, ?SOME, 0, true).
 
 %%--------------------------------------------------------------------
-packet_1_active_many_small(doc) -> 
-    ["Test packet option {packet, 1} in active mode."];
+packet_1_active_many_small() ->
+    [{doc,"Test packet option {packet, 1} in active mode."}].
 
-packet_1_active_many_small(suite) -> 
-    [];
-
-packet_1_active_many_small(Config) when is_list(Config) -> 
-    ClientOpts = ?config(client_opts, Config),
-    ServerOpts = ?config(server_opts, Config),
-    {ClientNode, ServerNode, Hostname} = ssl_test_lib:run_where(Config),
-
+packet_1_active_many_small(Config) when is_list(Config) ->
+    ct:timetrap({seconds, ?BASE_TIMEOUT_SECONDS * ?MANY_SCALE}),
     Data = "Packet option is {packet, 1}",
-
-    Server = ssl_test_lib:start_server([{node, ClientNode}, {port, 0}, 
-					{from, self()}, 
-					{mfa, {?MODULE, send, [Data, ?MANY]}},
-					{options, [{packet, 1}|ServerOpts]}]),
-    Port = ssl_test_lib:inet_port(Server),
-    Client = ssl_test_lib:start_client([{node, ServerNode}, {port, Port}, 
-					{host, Hostname},
-					{from, self()},
-					{mfa, 
-					 {?MODULE, 
-					  active_packet, [Data, ?MANY]}},
-					{options, [{active, true},
-						   {packet, 1} |
-						   ClientOpts]}]),
-
-    ssl_test_lib:check_result(Client, ok),
-
-    ssl_test_lib:close(Server),
-    ssl_test_lib:close(Client).
+    packet(Config, Data, send, active_packet, ?MANY, 1, true).
 
 %%--------------------------------------------------------------------
-packet_1_active_some_big(doc) -> 
-    ["Test packet option {packet, 1} in active mode."];
+packet_1_active_some_big() ->
+    [{doc,"Test packet option {packet, 1} in active mode."}].
 
-packet_1_active_some_big(suite) -> 
-    [];
-
-packet_1_active_some_big(Config) when is_list(Config) -> 
-    ClientOpts = ?config(client_opts, Config),
-    ServerOpts = ?config(server_opts, Config),
-    {ClientNode, ServerNode, Hostname} = ssl_test_lib:run_where(Config),
-
+packet_1_active_some_big(Config) when is_list(Config) ->
+    ct:timetrap({seconds, ?BASE_TIMEOUT_SECONDS * ?SOME_SCALE}),
     Data = lists:append(lists:duplicate(255, "1")),
-
-    Server = ssl_test_lib:start_server([{node, ClientNode}, {port, 0}, 
-					{from, self()}, 
-					{mfa, {?MODULE, send, [Data, ?SOME]}},
-					{options, [{packet, 1}|ServerOpts]}]),
-    Port = ssl_test_lib:inet_port(Server),
-    Client = ssl_test_lib:start_client([{node, ServerNode}, {port, Port}, 
-					{host, Hostname},
-					{from, self()},
-					{mfa, 
-					 {?MODULE, 
-					  active_packet, [Data, ?SOME]}},
-					{options, [{active, true},
-						   {packet, 1} |
-						   ClientOpts]}]),
-
-    ssl_test_lib:check_result(Client, ok),
-
-    ssl_test_lib:close(Server),
-    ssl_test_lib:close(Client).
+    packet(Config, Data, send, active_packet, ?SOME, 1, true).
 
 %%--------------------------------------------------------------------
-packet_2_active_many_small(doc) -> 
-    ["Test packet option {packet, 2} in active mode"];
+packet_2_active_many_small() ->
+    [{doc,"Test packet option {packet, 2} in active mode"}].
 
-packet_2_active_many_small(suite) -> 
-    [];
-
-packet_2_active_many_small(Config) when is_list(Config) -> 
-    ClientOpts = ?config(client_opts, Config),
-    ServerOpts = ?config(server_opts, Config),
-    {ClientNode, ServerNode, Hostname} = ssl_test_lib:run_where(Config),
-
+packet_2_active_many_small(Config) when is_list(Config) ->
+      ct:timetrap({seconds, ?BASE_TIMEOUT_SECONDS * ?MANY_SCALE}),
     Data = "Packet option is {packet, 2}",
-
-    Server = ssl_test_lib:start_server([{node, ClientNode}, {port, 0}, 
-					{from, self()}, 
-					{mfa, {?MODULE, send, [Data, ?MANY]}},
-					{options, [{packet, 2}|ServerOpts]}]),
-    Port = ssl_test_lib:inet_port(Server),
-    Client = ssl_test_lib:start_client([{node, ServerNode}, {port, Port}, 
-					{host, Hostname},
-					{from, self()},
-					{mfa, 
-					 {?MODULE, 
-					  active_packet, [Data, ?MANY]}},
-					{options, [{active, true},
-						   {packet, 2} |
-						   ClientOpts]}]),
-
-    ssl_test_lib:check_result(Client, ok),
-
-    ssl_test_lib:close(Server),
-    ssl_test_lib:close(Client).
+    packet(Config, Data, send, active_packet, ?MANY, 2, true).
 
 %%--------------------------------------------------------------------
-packet_2_active_some_big(doc) -> 
-    ["Test packet option {packet, 2} in active mode"];
+packet_2_active_some_big() ->
+    [{doc,"Test packet option {packet, 2} in active mode"}].
 
-packet_2_active_some_big(suite) -> 
-    [];
-
-packet_2_active_some_big(Config) when is_list(Config) -> 
-    ClientOpts = ?config(client_opts, Config),
-    ServerOpts = ?config(server_opts, Config),
-    {ClientNode, ServerNode, Hostname} = ssl_test_lib:run_where(Config),
-
+packet_2_active_some_big(Config) when is_list(Config) ->
+    ct:timetrap({seconds, ?BASE_TIMEOUT_SECONDS * ?SOME_SCALE}),
     Data = lists:append(lists:duplicate(100, "1234567890")),
-
-    Server = ssl_test_lib:start_server([{node, ClientNode}, {port, 0}, 
-					{from, self()}, 
-					{mfa, {?MODULE, send, [Data, ?SOME]}},
-					{options, [{packet, 2}|ServerOpts]}]),
-    Port = ssl_test_lib:inet_port(Server),
-    Client = ssl_test_lib:start_client([{node, ServerNode}, {port, Port}, 
-					{host, Hostname},
-					{from, self()},
-					{mfa, 
-					 {?MODULE, 
-					  active_packet, [Data, ?SOME]}},
-					{options, [{active, true},
-						   {packet, 2} |
-						   ClientOpts]}]),
-
-    ssl_test_lib:check_result(Client, ok),
-
-    ssl_test_lib:close(Server),
-    ssl_test_lib:close(Client).
+    packet(Config, Data, send, active_packet, ?SOME, 2, true).
 
 %%--------------------------------------------------------------------
-packet_4_active_many_small(doc) -> 
-    ["Test packet option {packet, 4} in active mode"];
+packet_4_active_many_small() ->
+    [{doc,"Test packet option {packet, 4} in active mode"}].
 
-packet_4_active_many_small(suite) -> 
-    [];
-
-packet_4_active_many_small(Config) when is_list(Config) -> 
-    ClientOpts = ?config(client_opts, Config),
-    ServerOpts = ?config(server_opts, Config),
-    {ClientNode, ServerNode, Hostname} = ssl_test_lib:run_where(Config),
-
+packet_4_active_many_small(Config) when is_list(Config) ->
+    ct:timetrap({seconds, ?BASE_TIMEOUT_SECONDS * ?MANY_SCALE}),
     Data = "Packet option is {packet, 4}",
-
-    Server = ssl_test_lib:start_server([{node, ClientNode}, {port, 0}, 
-					{from, self()}, 
-					{mfa, {?MODULE, send, [Data, ?MANY]}},
-					{options, [{packet, 4}|ServerOpts]}]),
-    Port = ssl_test_lib:inet_port(Server),
-    Client = ssl_test_lib:start_client([{node, ServerNode}, {port, Port}, 
-					{host, Hostname},
-					{from, self()},
-					{mfa, 
-					 {?MODULE, 
-					  active_packet, [Data, ?MANY]}},
-					{options, [{active, true},
-						   {packet, 4} |
-						   ClientOpts]}]),
-
-    ssl_test_lib:check_result(Client, ok),
-
-    ssl_test_lib:close(Server),
-    ssl_test_lib:close(Client).
-
+    packet(Config, Data, send, active_packet, ?MANY, 4, true).
 
 %%--------------------------------------------------------------------
-packet_4_active_some_big(doc) -> 
-    ["Test packet option {packet, 4} in active mode"];
+packet_4_active_some_big() ->
+    [{doc,"Test packet option {packet, 4} in active mode"}].
 
-packet_4_active_some_big(suite) -> 
-    [];
-
-packet_4_active_some_big(Config) when is_list(Config) -> 
-    ClientOpts = ?config(client_opts, Config),
-    ServerOpts = ?config(server_opts, Config),
-    {ClientNode, ServerNode, Hostname} = ssl_test_lib:run_where(Config),
-
+packet_4_active_some_big(Config) when is_list(Config) ->
+    ct:timetrap({seconds, ?BASE_TIMEOUT_SECONDS * ?SOME_SCALE}),
     Data = lists:append(lists:duplicate(100, "1234567890")),
-
-    Server = ssl_test_lib:start_server([{node, ClientNode}, {port, 0}, 
-					{from, self()}, 
-					{mfa, {?MODULE, send, [Data, ?SOME]}},
-					{options, [{packet, 4} | ServerOpts]}]),
-    Port = ssl_test_lib:inet_port(Server),
-    Client = ssl_test_lib:start_client([{node, ServerNode}, {port, Port}, 
-					{host, Hostname},
-					{from, self()},
-					{mfa, 
-					 {?MODULE, 
-					  active_packet, [Data, ?SOME]}},
-					{options, [{active, true},
-						   {packet, 4} |
-						   ClientOpts]}]),
-
-    ssl_test_lib:check_result(Client, ok),
-
-    ssl_test_lib:close(Server),
-    ssl_test_lib:close(Client).
-
+    packet(Config, Data, send, active_packet, ?SOME, 4, true).
 
 %%--------------------------------------------------------------------
-packet_send_to_large(doc) ->
-    ["Test setting the packet option {packet, 2} on the send side"];
-
-packet_send_to_large(suite) -> [];
+packet_send_to_large() ->
+    [{doc,"Test setting the packet option {packet, 2} on the send side"}].
 
 packet_send_to_large(Config) when is_list(Config) ->
-    ClientOpts = ?config(client_opts, Config),
-    ServerOpts = ?config(server_opts, Config),
+    ClientOpts = ssl_test_lib:ssl_options(client_opts, Config),
+    ServerOpts = ssl_test_lib:ssl_options(server_opts, Config),
     {ClientNode, ServerNode, Hostname} = ssl_test_lib:run_where(Config),
 
     Data = lists:append(lists:duplicate(30, "1234567890")),
@@ -1279,20 +505,13 @@ packet_send_to_large(Config) when is_list(Config) ->
     ssl_test_lib:close(Server),
     ssl_test_lib:close(Client).
 
-
-
-
-
 %%--------------------------------------------------------------------
-packet_wait_active(doc) -> 
-    ["Test waiting when complete packages have not arrived"];
-
-packet_wait_active(suite) -> 
-    [];
+packet_wait_active() ->
+    [{doc,"Test waiting when complete packages have not arrived"}].
 
 packet_wait_active(Config) when is_list(Config) -> 
-    ClientOpts = ?config(client_opts, Config),
-    ServerOpts = ?config(server_opts, Config),
+    ClientOpts = ssl_test_lib:ssl_options(client_opts, Config),
+    ServerOpts = ssl_test_lib:ssl_options(server_opts, Config),
     {ClientNode, ServerNode, Hostname} = ssl_test_lib:run_where(Config),
 
     Data = list_to_binary(lists:duplicate(100, "1234567890")),
@@ -1320,15 +539,12 @@ packet_wait_active(Config) when is_list(Config) ->
 
 
 %%--------------------------------------------------------------------
-packet_wait_passive(doc) -> 
-    ["Test waiting when complete packages have not arrived"];
-
-packet_wait_passive(suite) -> 
-    [];
+packet_wait_passive() ->
+    [{doc,"Test waiting when complete packages have not arrived"}].
 
 packet_wait_passive(Config) when is_list(Config) -> 
-    ClientOpts = ?config(client_opts, Config),
-    ServerOpts = ?config(server_opts, Config),
+    ClientOpts = ssl_test_lib:ssl_options(client_opts, Config),
+    ServerOpts = ssl_test_lib:ssl_options(server_opts, Config),
     {ClientNode, ServerNode, Hostname} = ssl_test_lib:run_where(Config),
 
     Data = list_to_binary(lists:duplicate(100, "1234567890")),
@@ -1353,14 +569,12 @@ packet_wait_passive(Config) when is_list(Config) ->
     ssl_test_lib:close(Server),
     ssl_test_lib:close(Client).
 %%--------------------------------------------------------------------
-packet_baddata_active(doc) -> 
-    ["Test that if a bad packet arrives error msg is sent and socket is closed"];
-packet_baddata_active(suite) -> 
-    [];
+packet_baddata_active() ->
+    [{doc,"Test that if a bad packet arrives error msg is sent and socket is closed"}].
 
 packet_baddata_active(Config) when is_list(Config) -> 
-    ClientOpts = ?config(client_opts, Config),
-    ServerOpts = ?config(server_opts, Config),
+    ClientOpts = ssl_test_lib:ssl_options(client_opts, Config),
+    ServerOpts = ssl_test_lib:ssl_options(server_opts, Config),
     {ClientNode, ServerNode, Hostname} = ssl_test_lib:run_where(Config),
 
     Data = list_to_binary(lists:duplicate(100, "1234567890")),
@@ -1381,22 +595,19 @@ packet_baddata_active(Config) when is_list(Config) ->
 	{Client, {other, {ssl_error, _Socket, 
 			  {invalid_packet, _}},{error,closed},1}} -> ok;
 	Unexpected ->
-	    test_server:fail({unexpected, Unexpected})
+	    ct:fail({unexpected, Unexpected})
     end,    
 
 
     ssl_test_lib:close(Server),
     ssl_test_lib:close(Client).
 %%--------------------------------------------------------------------
-packet_baddata_passive(doc) -> 
-    ["Test that if a bad packet arrives error msg is sent and socket is closed"];
-
-packet_baddata_passive(suite) -> 
-    [];
+packet_baddata_passive() ->
+    [{doc,"Test that if a bad packet arrives error msg is sent and socket is closed"}].
 
 packet_baddata_passive(Config) when is_list(Config) -> 
-    ClientOpts = ?config(client_opts, Config),
-    ServerOpts = ?config(server_opts, Config),
+    ClientOpts = ssl_test_lib:ssl_options(client_opts, Config),
+    ServerOpts = ssl_test_lib:ssl_options(server_opts, Config),
     {ClientNode, ServerNode, Hostname} = ssl_test_lib:run_where(Config),
 
     Data = list_to_binary(lists:duplicate(100, "1234567890")),
@@ -1418,23 +629,20 @@ packet_baddata_passive(Config) when is_list(Config) ->
     receive
 	{Client, {other, {error, {invalid_packet, _}},{error,closed}, 1}} -> ok;
 	Unexpected ->
-	    test_server:fail({unexpected, Unexpected})
+	    ct:fail({unexpected, Unexpected})
     end,    
 
     ssl_test_lib:close(Server),
     ssl_test_lib:close(Client).
 %%--------------------------------------------------------------------
 
-packet_size_active(doc) -> 
-    ["Test that if a packet of size larger than
-    packet_size arrives error msg is sent and socket is closed"];
-
-packet_size_active(suite) -> 
-    [];
+packet_size_active() ->
+    [{doc,"Test that if a packet of size larger than
+    packet_size arrives error msg is sent and socket is closed"}].
 
 packet_size_active(Config) when is_list(Config) -> 
-    ClientOpts = ?config(client_opts, Config),
-    ServerOpts = ?config(server_opts, Config),
+    ClientOpts = ssl_test_lib:ssl_options(client_opts, Config),
+    ServerOpts = ssl_test_lib:ssl_options(server_opts, Config),
     {ClientNode, ServerNode, Hostname} = ssl_test_lib:run_where(Config),
 
     Data = list_to_binary(lists:duplicate(100, "1234567890")),
@@ -1455,21 +663,20 @@ packet_size_active(Config) when is_list(Config) ->
 	{Client, {other, {ssl_error, _Socket, 
 			  {invalid_packet, _}},{error,closed},1}} -> ok;
 	Unexpected ->
-	    test_server:fail({unexpected, Unexpected})
+	    ct:fail({unexpected, Unexpected})
     end,    
 
     ssl_test_lib:close(Server),
     ssl_test_lib:close(Client).
 %%--------------------------------------------------------------------
 
-packet_size_passive(doc) -> 
-    ["Test that if a packet of size larger
-    than packet_size arrives error msg is sent and socket is closed"];
-packet_size_passive(suite) -> [];
+packet_size_passive() ->
+    [{doc, "Test that if a packet of size larger
+    than packet_size arrives error msg is sent and socket is closed"}].
 
 packet_size_passive(Config) when is_list(Config) -> 
-    ClientOpts = ?config(client_opts, Config),
-    ServerOpts = ?config(server_opts, Config),
+    ClientOpts = ssl_test_lib:ssl_options(client_opts, Config),
+    ServerOpts = ssl_test_lib:ssl_options(server_opts, Config),
     {ClientNode, ServerNode, Hostname} = ssl_test_lib:run_where(Config),
 
     Data = list_to_binary(lists:duplicate(100, "1234567890")),
@@ -1490,20 +697,46 @@ packet_size_passive(Config) when is_list(Config) ->
     receive
 	{Client, {other, {error, {invalid_packet, _}},{error,closed},1}} -> ok;
 	Unexpected ->
-	    test_server:fail({unexpected, Unexpected})
+	    ct:fail({unexpected, Unexpected})
     end,
 
     ssl_test_lib:close(Server),
     ssl_test_lib:close(Client).
 
+
 %%--------------------------------------------------------------------
-packet_cdr_decode(doc) ->
-    ["Test setting the packet option {packet, cdr}, {mode, binary}"];
-packet_cdr_decode(suite) ->
-    [];
+packet_switch() ->
+    [{doc,"Test packet option {packet, 2} followd by {packet, 4}"}].
+
+packet_switch(Config) when is_list(Config) ->
+    ClientOpts = ssl_test_lib:ssl_options(client_opts, Config),
+    ServerOpts = ssl_test_lib:ssl_options(server_opts, Config),
+    {ClientNode, ServerNode, Hostname} = ssl_test_lib:run_where(Config),
+
+    Server = ssl_test_lib:start_server([{node, ClientNode}, {port, 0},
+					{from, self()},
+					{mfa, {?MODULE, send_switch_packet ,["Hello World", 4]}},
+					{options, [{nodelay, true},{packet, 2} | ServerOpts]}]),
+    Port = ssl_test_lib:inet_port(Server),
+    Client = ssl_test_lib:start_client([{node, ServerNode}, {port, Port},
+					{host, Hostname},
+					{from, self()},
+					{mfa, {?MODULE, recv_switch_packet, ["Hello World", 4]}},
+					{options, [{nodelay, true}, {packet, 2} |
+						   ClientOpts]}]),
+
+    ssl_test_lib:check_result(Client, ok, Server, ok),
+
+    ssl_test_lib:close(Server),
+    ssl_test_lib:close(Client).
+
+
+%%--------------------------------------------------------------------
+packet_cdr_decode() ->
+    [{doc,"Test setting the packet option {packet, cdr}, {mode, binary}"}].
 packet_cdr_decode(Config) when is_list(Config) ->
-    ClientOpts = ?config(client_opts, Config),
-    ServerOpts = ?config(server_opts, Config),
+    ClientOpts = ssl_test_lib:ssl_options(client_opts, Config),
+    ServerOpts = ssl_test_lib:ssl_options(server_opts, Config),
     {ClientNode, ServerNode, Hostname} = ssl_test_lib:run_where(Config),
 
     %% A valid cdr packet
@@ -1532,13 +765,11 @@ packet_cdr_decode(Config) when is_list(Config) ->
     ssl_test_lib:close(Client).
 
 %%--------------------------------------------------------------------
-packet_cdr_decode_list(doc) ->
-    ["Test setting the packet option {packet, cdr} {mode, list}"];
-packet_cdr_decode_list(suite) ->
-    [];
+packet_cdr_decode_list() ->
+    [{doc,"Test setting the packet option {packet, cdr} {mode, list}"}].
 packet_cdr_decode_list(Config) when is_list(Config) ->
-    ClientOpts = ?config(client_opts, Config),
-    ServerOpts = ?config(server_opts, Config),
+    ClientOpts = ssl_test_lib:ssl_options(client_opts, Config),
+    ServerOpts = ssl_test_lib:ssl_options(server_opts, Config),
     {ClientNode, ServerNode, Hostname} = ssl_test_lib:run_where(Config),
 
     %% A valid cdr packet
@@ -1567,15 +798,13 @@ packet_cdr_decode_list(Config) when is_list(Config) ->
     ssl_test_lib:close(Client).
 
 %%--------------------------------------------------------------------
-packet_http_decode(doc) ->
-    ["Test setting the packet option {packet, http} {mode, binary} "
-     "(Body will be binary http strings are lists)"];
-packet_http_decode(suite) ->
-    [];
+packet_http_decode() ->
+    [{doc, "Test setting the packet option {packet, http} {mode, binary} "
+     "(Body will be binary http strings are lists)"}].
 
 packet_http_decode(Config) when is_list(Config) ->
-    ClientOpts = ?config(client_opts, Config),
-    ServerOpts = ?config(server_opts, Config),
+    ClientOpts = ssl_test_lib:ssl_options(client_opts, Config),
+    ServerOpts = ssl_test_lib:ssl_options(server_opts, Config),
     {ClientNode, ServerNode, Hostname} = ssl_test_lib:run_where(Config),
 
     Request = "GET / HTTP/1.1\r\n"
@@ -1631,11 +860,11 @@ server_http_decode(Socket, HttpResponse) ->
 	Other4 -> exit({?LINE, Other4})
     end,
     assert_packet_opt(Socket, http),
-    ok = ssl:send(Socket, HttpResponse),
+    spawn(fun() -> ssl:send(Socket, HttpResponse) end),
     ok.
 
 client_http_decode(Socket, HttpRequest) ->
-    ok = ssl:send(Socket, HttpRequest),
+    spawn(fun() -> ssl:send(Socket, HttpRequest) end),
     receive
 	{ssl, Socket, {http_response, {1,1}, 200, "OK"}}  -> ok;
 	Other1 -> exit({?LINE, Other1})
@@ -1652,14 +881,12 @@ client_http_decode(Socket, HttpRequest) ->
     ok.
 
 %%--------------------------------------------------------------------
-packet_http_decode_list(doc) ->
-    ["Test setting the packet option {packet, http}, {mode, list}"
-     "(Body will be list too)"];
-packet_http_decode_list(suite) ->
-    [];
+packet_http_decode_list() ->
+    [{doc, "Test setting the packet option {packet, http}, {mode, list}"
+      "(Body will be list too)"}].
 packet_http_decode_list(Config) when is_list(Config) ->
-    ClientOpts = ?config(client_opts, Config),
-    ServerOpts = ?config(server_opts, Config),
+    ClientOpts = ssl_test_lib:ssl_options(client_opts, Config),
+    ServerOpts = ssl_test_lib:ssl_options(server_opts, Config),
     {ClientNode, ServerNode, Hostname} = ssl_test_lib:run_where(Config),
 
     Request = "GET / HTTP/1.1\r\n"
@@ -1695,7 +922,7 @@ packet_http_decode_list(Config) when is_list(Config) ->
 
 
 client_http_decode_list(Socket, HttpRequest) ->
-    ok = ssl:send(Socket, HttpRequest),
+    spawn(fun() -> ssl:send(Socket, HttpRequest) end),
     receive
 	{ssl, Socket, {http_response, {1,1}, 200, "OK"}}  -> ok;
 	Other1 -> exit({?LINE, Other1})
@@ -1712,14 +939,11 @@ client_http_decode_list(Socket, HttpRequest) ->
     ok.
 
 %%--------------------------------------------------------------------
-packet_http_bin_decode_multi(doc) ->
-    ["Test setting the packet option {packet, http_bin} with multiple requests"];
-packet_http_bin_decode_multi(suite) ->
-    [];
-
+packet_http_bin_decode_multi() ->
+    [{doc,"Test setting the packet option {packet, http_bin} with multiple requests"}].
 packet_http_bin_decode_multi(Config) when is_list(Config) ->
-    ClientOpts = ?config(client_opts, Config),
-    ServerOpts = ?config(server_opts, Config),
+    ClientOpts = ssl_test_lib:ssl_options(client_opts, Config),
+    ServerOpts = ssl_test_lib:ssl_options(server_opts, Config),
     {ClientNode, ServerNode, Hostname} = ssl_test_lib:run_where(Config),
 
     Request = <<"GET / HTTP/1.1\r\n"
@@ -1777,13 +1001,13 @@ server_http_bin_decode(Socket, HttpResponse, Count) when Count > 0 ->
 	Other4 -> exit({?LINE, Other4})
     end,
     assert_packet_opt(Socket, http_bin),
-    ok = ssl:send(Socket, HttpResponse),
+    spawn(fun() -> ssl:send(Socket, HttpResponse) end),
     server_http_bin_decode(Socket, HttpResponse, Count - 1);
 server_http_bin_decode(_, _, _) ->
     ok.
 
 client_http_bin_decode(Socket, HttpRequest, Count) when Count > 0 ->
-    ok = ssl:send(Socket, HttpRequest),
+    spawn(fun() -> ssl:send(Socket, HttpRequest) end),
     receive
 	{ssl, Socket, {http_response, {1,1}, 200, <<"OK">>}}  -> ok;
 	Other1 -> exit({?LINE, Other1})
@@ -1803,14 +1027,13 @@ client_http_bin_decode(_, _, _) ->
     ok.
 
 %%--------------------------------------------------------------------
-packet_http_error_passive(doc) ->
-    ["Test setting the packet option {packet, http}, {active, false}"
-    " with a incorrect http header." ];
-packet_http_error_passive(suite) ->
-    [];
+packet_http_error_passive() ->
+    [{doc,"Test setting the packet option {packet, http}, {active, false}"
+      " with a incorrect http header."}].
+
 packet_http_error_passive(Config) when is_list(Config) ->
-    ClientOpts = ?config(client_opts, Config),
-    ServerOpts = ?config(server_opts, Config),
+    ClientOpts = ssl_test_lib:ssl_options(client_opts, Config),
+    ServerOpts = ssl_test_lib:ssl_options(server_opts, Config),
     {ClientNode, ServerNode, Hostname} = ssl_test_lib:run_where(Config),
 
     Request = "GET / HTTP/1.1\r\n"
@@ -1862,16 +1085,15 @@ server_http_decode_error(Socket, HttpResponse) ->
     {ok, http_eoh} = ssl:recv(Socket, 0),
 
     assert_packet_opt(Socket, http),
-    ok = ssl:send(Socket, HttpResponse),
+    spawn(fun() -> ssl:send(Socket, HttpResponse) end),
     ok.
 %%--------------------------------------------------------------------
-packet_httph_active(doc) ->
-    ["Test setting the packet option {packet, httph}"];
-packet_httph_active(suite) ->
-    [];
+packet_httph_active() ->
+    [{doc,"Test setting the packet option {packet, httph}"}].
+
 packet_httph_active(Config) when is_list(Config) ->
-    ClientOpts = ?config(client_opts, Config),
-    ServerOpts = ?config(server_opts, Config),
+    ClientOpts = ssl_test_lib:ssl_options(client_opts, Config),
+    ServerOpts = ssl_test_lib:ssl_options(server_opts, Config),
     {ClientNode, ServerNode, Hostname} = ssl_test_lib:run_where(Config),
 
     Trailer = "Content-Encoding: gzip\r\n"
@@ -1922,13 +1144,11 @@ client_http_decode_trailer_active(Socket) ->
     ok.
 
 %%--------------------------------------------------------------------
-packet_httph_bin_active(doc) ->
-    ["Test setting the packet option {packet, httph_bin}"];
-packet_httph_bin_active(suite) ->
-    [];
+packet_httph_bin_active() ->
+    [{doc,"Test setting the packet option {packet, httph_bin}"}].
 packet_httph_bin_active(Config) when is_list(Config) ->
-    ClientOpts = ?config(client_opts, Config),
-    ServerOpts = ?config(server_opts, Config),
+    ClientOpts = ssl_test_lib:ssl_options(client_opts, Config),
+    ServerOpts = ssl_test_lib:ssl_options(server_opts, Config),
     {ClientNode, ServerNode, Hostname} = ssl_test_lib:run_where(Config),
 
     Trailer = "Content-Encoding: gzip\r\n"
@@ -1973,13 +1193,12 @@ client_http_decode_trailer_bin_active(Socket) ->
     end,
     ok.
 %%--------------------------------------------------------------------
-packet_httph_active_once(doc) ->
-    ["Test setting the packet option {packet, httph}"];
-packet_httph_active_once(suite) ->
-    [];
+packet_httph_active_once() ->
+    [{doc,"Test setting the packet option {packet, httph}"}].
+
 packet_httph_active_once(Config) when is_list(Config) ->
-    ClientOpts = ?config(client_opts, Config),
-    ServerOpts = ?config(server_opts, Config),
+    ClientOpts = ssl_test_lib:ssl_options(client_opts, Config),
+    ServerOpts = ssl_test_lib:ssl_options(server_opts, Config),
     {ClientNode, ServerNode, Hostname} = ssl_test_lib:run_where(Config),
 
     Trailer = "Content-Encoding: gzip\r\n"
@@ -2027,13 +1246,12 @@ client_http_decode_trailer_active_once(Socket) ->
     end,
     ok.
 %%--------------------------------------------------------------------
-packet_httph_bin_active_once(doc) ->
-    ["Test setting the packet option {packet, httph_bin}"];
-packet_httph_bin_active_once(suite) ->
-    [];
+packet_httph_bin_active_once() ->
+    [{doc,"Test setting the packet option {packet, httph_bin}"}].
+
 packet_httph_bin_active_once(Config) when is_list(Config) ->
-    ClientOpts = ?config(client_opts, Config),
-    ServerOpts = ?config(server_opts, Config),
+    ClientOpts = ssl_test_lib:ssl_options(client_opts, Config),
+    ServerOpts = ssl_test_lib:ssl_options(server_opts, Config),
     {ClientNode, ServerNode, Hostname} = ssl_test_lib:run_where(Config),
 
     Trailer = "Content-Encoding: gzip\r\n"
@@ -2082,13 +1300,12 @@ client_http_decode_trailer_bin_active_once(Socket) ->
 
 %%--------------------------------------------------------------------
 
-packet_httph_passive(doc) ->
-    ["Test setting the packet option {packet, httph}"];
-packet_httph_passive(suite) ->
-    [];
+packet_httph_passive() ->
+    [{doc,"Test setting the packet option {packet, httph}"}].
+
 packet_httph_passive(Config) when is_list(Config) ->
-    ClientOpts = ?config(client_opts, Config),
-    ServerOpts = ?config(server_opts, Config),
+    ClientOpts = ssl_test_lib:ssl_options(client_opts, Config),
+    ServerOpts = ssl_test_lib:ssl_options(server_opts, Config),
     {ClientNode, ServerNode, Hostname} = ssl_test_lib:run_where(Config),
 
     Trailer = "Content-Encoding: gzip\r\n"
@@ -2123,13 +1340,12 @@ client_http_decode_trailer_passive(Socket) ->
     ok.
 
 %%--------------------------------------------------------------------
-packet_httph_bin_passive(doc) ->
-    ["Test setting the packet option {packet, httph_bin}"];
-packet_httph_bin_passive(suite) ->
-    [];
+packet_httph_bin_passive() ->
+    [{doc,"Test setting the packet option {packet, httph_bin}"}].
+
 packet_httph_bin_passive(Config) when is_list(Config) ->
-    ClientOpts = ?config(client_opts, Config),
-    ServerOpts = ?config(server_opts, Config),
+    ClientOpts = ssl_test_lib:ssl_options(client_opts, Config),
+    ServerOpts = ssl_test_lib:ssl_options(server_opts, Config),
     {ClientNode, ServerNode, Hostname} = ssl_test_lib:run_where(Config),
 
     Trailer = "Content-Encoding: gzip\r\n"
@@ -2164,13 +1380,12 @@ client_http_decode_trailer_bin_passive(Socket) ->
     ok.
 
 %%--------------------------------------------------------------------
-packet_line_decode(doc) ->
-    ["Test setting the packet option {packet, line}, {mode, binary}"];
-packet_line_decode(suite) ->
-    [];
+packet_line_decode() ->
+    [{doc,"Test setting the packet option {packet, line}, {mode, binary}"}].
+
 packet_line_decode(Config) when is_list(Config) ->
-    ClientOpts = ?config(client_opts, Config),
-    ServerOpts = ?config(server_opts, Config),
+    ClientOpts = ssl_test_lib:ssl_options(client_opts, Config),
+    ServerOpts = ssl_test_lib:ssl_options(server_opts, Config),
     {ClientNode, ServerNode, Hostname} = ssl_test_lib:run_where(Config),
 
     Data = list_to_binary(lists:flatten(io_lib:format("Line ends here.~n"
@@ -2201,13 +1416,12 @@ packet_line_decode(Config) when is_list(Config) ->
 
 %%--------------------------------------------------------------------
 
-packet_line_decode_list(doc) ->
-    ["Test setting the packet option {packet, line}, {mode, list}"];
-packet_line_decode_list(suite) ->
-    [];
+packet_line_decode_list() ->
+    [{doc,"Test setting the packet option {packet, line}, {mode, list}"}].
+
 packet_line_decode_list(Config) when is_list(Config) ->
-    ClientOpts = ?config(client_opts, Config),
-    ServerOpts = ?config(server_opts, Config),
+    ClientOpts = ssl_test_lib:ssl_options(client_opts, Config),
+    ServerOpts = ssl_test_lib:ssl_options(server_opts, Config),
     {ClientNode, ServerNode, Hostname} = ssl_test_lib:run_where(Config),
 
     Data = lists:flatten(io_lib:format("Line ends here.~n"
@@ -2240,13 +1454,12 @@ packet_line_decode_list(Config) when is_list(Config) ->
 
 %%--------------------------------------------------------------------
 
-packet_asn1_decode(doc) ->
-    ["Test setting the packet option {packet, asn1}"];
-packet_asn1_decode(suite) ->
-    [];
+packet_asn1_decode() ->
+    [{doc,"Test setting the packet option {packet, asn1}"}].
+
 packet_asn1_decode(Config) when is_list(Config) ->
-    ClientOpts = ?config(client_opts, Config),
-    ServerOpts = ?config(server_opts, Config),
+    ClientOpts = ssl_test_lib:ssl_options(client_opts, Config),
+    ServerOpts = ssl_test_lib:ssl_options(server_opts, Config),
     {ClientNode, ServerNode, Hostname} = ssl_test_lib:run_where(Config),
     
     File = proplists:get_value(certfile, ServerOpts),
@@ -2276,13 +1489,12 @@ packet_asn1_decode(Config) when is_list(Config) ->
     ssl_test_lib:close(Client).
 
 %%--------------------------------------------------------------------
-packet_asn1_decode_list(doc) ->
-    ["Test setting the packet option {packet, asn1}"];
-packet_asn1_decode_list(suite) ->
-    [];
+packet_asn1_decode_list() ->
+    [{doc,"Test setting the packet option {packet, asn1}"}].
+
 packet_asn1_decode_list(Config) when is_list(Config) ->
-    ClientOpts = ?config(client_opts, Config),
-    ServerOpts = ?config(server_opts, Config),
+    ClientOpts = ssl_test_lib:ssl_options(client_opts, Config),
+    ServerOpts = ssl_test_lib:ssl_options(server_opts, Config),
     {ClientNode, ServerNode, Hostname} = ssl_test_lib:run_where(Config),
     
     File = proplists:get_value(certfile, ServerOpts),
@@ -2314,13 +1526,12 @@ packet_asn1_decode_list(Config) when is_list(Config) ->
     ssl_test_lib:close(Client).
 
 %%--------------------------------------------------------------------
-packet_tpkt_decode(doc) ->
-    ["Test setting the packet option {packet, tpkt}"];
-packet_tpkt_decode(suite) ->
-    [];
+packet_tpkt_decode() ->
+    [{doc,"Test setting the packet option {packet, tpkt}"}].
+
 packet_tpkt_decode(Config) when is_list(Config) ->
-    ClientOpts = ?config(client_opts, Config),
-    ServerOpts = ?config(server_opts, Config),
+    ClientOpts = ssl_test_lib:ssl_options(client_opts, Config),
+    ServerOpts = ssl_test_lib:ssl_options(server_opts, Config),
     {ClientNode, ServerNode, Hostname} = ssl_test_lib:run_where(Config),
     
     Data = list_to_binary(add_tpkt_header("TPKT data")),
@@ -2347,13 +1558,12 @@ packet_tpkt_decode(Config) when is_list(Config) ->
     ssl_test_lib:close(Server),
     ssl_test_lib:close(Client).
 %%--------------------------------------------------------------------
-packet_tpkt_decode_list(doc) ->
-    ["Test setting the packet option {packet, tpkt}"];
-packet_tpkt_decode_list(suite) ->
-    [];
+packet_tpkt_decode_list() ->
+    [{doc,"Test setting the packet option {packet, tpkt}"}].
+
 packet_tpkt_decode_list(Config) when is_list(Config) ->
-    ClientOpts = ?config(client_opts, Config),
-    ServerOpts = ?config(server_opts, Config),
+    ClientOpts = ssl_test_lib:ssl_options(client_opts, Config),
+    ServerOpts = ssl_test_lib:ssl_options(server_opts, Config),
     {ClientNode, ServerNode, Hostname} = ssl_test_lib:run_where(Config),
     
     Data = binary_to_list(list_to_binary(add_tpkt_header("TPKT data"))),
@@ -2381,13 +1591,12 @@ packet_tpkt_decode_list(Config) when is_list(Config) ->
 
 %%--------------------------------------------------------------------
 
-%% packet_fcgi_decode(doc) ->
-%%     ["Test setting the packet option {packet, fcgi}"];
-%% packet_fcgi_decode(suite) ->
-%%     [];
+%% packet_fcgi_decode() ->
+%%     [{doc,"Test setting the packet option {packet, fcgi}"}].
+
 %% packet_fcgi_decode(Config) when is_list(Config) ->
-%%     ClientOpts = ?config(client_opts, Config),
-%%     ServerOpts = ?config(server_opts, Config),
+%%     ClientOpts = ssl_test_lib:ssl_options(client_opts, Config),
+%%     ServerOpts = ssl_test_lib:ssl_options(server_opts, Config),
 %%     {ClientNode, ServerNode, Hostname} = ssl_test_lib:run_where(Config),
     
 %%     Data = ...
@@ -2416,13 +1625,11 @@ packet_tpkt_decode_list(Config) when is_list(Config) ->
 
 %%--------------------------------------------------------------------
 
-packet_sunrm_decode(doc) ->
-    ["Test setting the packet option {packet, sunrm}"];
-packet_sunrm_decode(suite) ->
-    [];
+packet_sunrm_decode() ->
+    [{doc,"Test setting the packet option {packet, sunrm}"}].
 packet_sunrm_decode(Config) when is_list(Config) ->
-    ClientOpts = ?config(client_opts, Config),
-    ServerOpts = ?config(server_opts, Config),
+    ClientOpts = ssl_test_lib:ssl_options(client_opts, Config),
+    ServerOpts = ssl_test_lib:ssl_options(server_opts, Config),
     {ClientNode, ServerNode, Hostname} = ssl_test_lib:run_where(Config),
     
     Data = <<11:32, "Hello world">>,
@@ -2449,13 +1656,12 @@ packet_sunrm_decode(Config) when is_list(Config) ->
     ssl_test_lib:close(Client).
 
 %%--------------------------------------------------------------------
-packet_sunrm_decode_list(doc) ->
-    ["Test setting the packet option {packet, sunrm}"];
-packet_sunrm_decode_list(suite) ->
-    [];
+packet_sunrm_decode_list() ->
+    [{doc,"Test setting the packet option {packet, sunrm}"}].
+
 packet_sunrm_decode_list(Config) when is_list(Config) ->
-    ClientOpts = ?config(client_opts, Config),
-    ServerOpts = ?config(server_opts, Config),
+    ClientOpts = ssl_test_lib:ssl_options(client_opts, Config),
+    ServerOpts = ssl_test_lib:ssl_options(server_opts, Config),
     {ClientNode, ServerNode, Hostname} = ssl_test_lib:run_where(Config),
     
     Data = binary_to_list(list_to_binary([<<11:32>>, "Hello world"])),
@@ -2482,13 +1688,12 @@ packet_sunrm_decode_list(Config) when is_list(Config) ->
     ssl_test_lib:close(Client).
 %%--------------------------------------------------------------------
 
-header_decode_one_byte_active(doc) ->
-    ["Test setting the packet option {header, 1}"];
-header_decode_one_byte_active(suite) ->
-    [];
+header_decode_one_byte_active() ->
+    [{doc,"Test setting the packet option {header, 1}"}].
+
 header_decode_one_byte_active(Config) when is_list(Config) ->
-    ClientOpts = ?config(client_opts, Config),
-    ServerOpts = ?config(server_opts, Config),
+    ClientOpts = ssl_test_lib:ssl_options(client_opts, Config),
+    ServerOpts = ssl_test_lib:ssl_options(server_opts, Config),
     {ClientNode, ServerNode, Hostname} = ssl_test_lib:run_where(Config),
     
     Data = <<11:8, "Hello world">>,
@@ -2506,8 +1711,8 @@ header_decode_one_byte_active(Config) when is_list(Config) ->
 					{from, self()},
 					{mfa, {?MODULE, client_header_decode_active,
 					       [Data, [11 | <<"Hello world">> ]]}},
-					{options, [{active, true}, {header, 1},
-						   binary | ClientOpts]}]),
+					{options, [{active, true}, binary, {header, 1}
+						    | ClientOpts]}]),
 
     ssl_test_lib:check_result(Server, ok, Client, ok),
 
@@ -2516,13 +1721,12 @@ header_decode_one_byte_active(Config) when is_list(Config) ->
 
 %%--------------------------------------------------------------------
 
-header_decode_two_bytes_active(doc) ->
-    ["Test setting the packet option {header, 2}"];
-header_decode_two_bytes_active(suite) ->
-    [];
+header_decode_two_bytes_active() ->
+    [{doc,"Test setting the packet option {header, 2}"}].
+
 header_decode_two_bytes_active(Config) when is_list(Config) ->
-    ClientOpts = ?config(client_opts, Config),
-    ServerOpts = ?config(server_opts, Config),
+    ClientOpts = ssl_test_lib:ssl_options(client_opts, Config),
+    ServerOpts = ssl_test_lib:ssl_options(server_opts, Config),
     {ClientNode, ServerNode, Hostname} = ssl_test_lib:run_where(Config),
     
     Data = <<11:8, "Hello world">>,
@@ -2551,13 +1755,12 @@ header_decode_two_bytes_active(Config) when is_list(Config) ->
 
 %%--------------------------------------------------------------------
 
-header_decode_two_bytes_two_sent_active(doc) ->
-    ["Test setting the packet option {header, 2} and sending two byte"];
-header_decode_two_bytes_two_sent_active(suite) ->
-    [];
+header_decode_two_bytes_two_sent_active() ->
+    [{doc,"Test setting the packet option {header, 2} and sending two byte"}].
+
 header_decode_two_bytes_two_sent_active(Config) when is_list(Config) ->
-    ClientOpts = ?config(client_opts, Config),
-    ServerOpts = ?config(server_opts, Config),
+    ClientOpts = ssl_test_lib:ssl_options(client_opts, Config),
+    ServerOpts = ssl_test_lib:ssl_options(server_opts, Config),
     {ClientNode, ServerNode, Hostname} = ssl_test_lib:run_where(Config),
     
     Data = <<"He">>,
@@ -2565,7 +1768,7 @@ header_decode_two_bytes_two_sent_active(Config) when is_list(Config) ->
     Server = ssl_test_lib:start_server([{node, ClientNode}, {port, 0},
 					{from, self()},
 					{mfa, {?MODULE, server_header_decode_active,
-					       [Data, [$H, $e]]}},
+					       [Data, [$H, $e | <<>>]]}},
 					{options, [{active, true}, binary, 
 						   {header,2}|ServerOpts]}]),
 
@@ -2574,7 +1777,7 @@ header_decode_two_bytes_two_sent_active(Config) when is_list(Config) ->
 					{host, Hostname},
 					{from, self()},
 					{mfa, {?MODULE, client_header_decode_active,
-					       [Data, [$H, $e]]}},
+					       [Data, [$H, $e | <<>>]]}},
 					{options, [{active, true}, {header, 2},
 						   binary | ClientOpts]}]),
 
@@ -2586,13 +1789,12 @@ header_decode_two_bytes_two_sent_active(Config) when is_list(Config) ->
 
 %%--------------------------------------------------------------------
 
-header_decode_two_bytes_one_sent_active(doc) ->
-    ["Test setting the packet option {header, 2} and sending one byte"];
-header_decode_two_bytes_one_sent_active(suite) ->
-    [];
+header_decode_two_bytes_one_sent_active() ->
+    [{doc,"Test setting the packet option {header, 2} and sending one byte"}].
+
 header_decode_two_bytes_one_sent_active(Config) when is_list(Config) ->
-    ClientOpts = ?config(client_opts, Config),
-    ServerOpts = ?config(server_opts, Config),
+    ClientOpts = ssl_test_lib:ssl_options(client_opts, Config),
+    ServerOpts = ssl_test_lib:ssl_options(server_opts, Config),
     {ClientNode, ServerNode, Hostname} = ssl_test_lib:run_where(Config),
     
     Data = <<"H">>,
@@ -2620,13 +1822,12 @@ header_decode_two_bytes_one_sent_active(Config) when is_list(Config) ->
 
 %%--------------------------------------------------------------------
 
-header_decode_one_byte_passive(doc) ->
-    ["Test setting the packet option {header, 1}"];
-header_decode_one_byte_passive(suite) ->
-    [];
+header_decode_one_byte_passive() ->
+    [{doc,"Test setting the packet option {header, 1}"}].
+
 header_decode_one_byte_passive(Config) when is_list(Config) ->
-    ClientOpts = ?config(client_opts, Config),
-    ServerOpts = ?config(server_opts, Config),
+    ClientOpts = ssl_test_lib:ssl_options(client_opts, Config),
+    ServerOpts = ssl_test_lib:ssl_options(server_opts, Config),
     {ClientNode, ServerNode, Hostname} = ssl_test_lib:run_where(Config),
 
     Data = <<11:8, "Hello world">>,
@@ -2644,8 +1845,8 @@ header_decode_one_byte_passive(Config) when is_list(Config) ->
 					{from, self()},
 					{mfa, {?MODULE, client_header_decode_passive,
 					       [Data, [11 | <<"Hello world">> ]]}},
-					{options, [{active, false}, {header, 1},
-						   binary | ClientOpts]}]),
+					{options, [{active, false}, binary, {header, 1}
+						   | ClientOpts]}]),
 
     ssl_test_lib:check_result(Server, ok, Client, ok),
 
@@ -2654,13 +1855,12 @@ header_decode_one_byte_passive(Config) when is_list(Config) ->
 
 %%--------------------------------------------------------------------
 
-header_decode_two_bytes_passive(doc) ->
-    ["Test setting the packet option {header, 2}"];
-header_decode_two_bytes_passive(suite) ->
-    [];
+header_decode_two_bytes_passive() ->
+    [{doc,"Test setting the packet option {header, 2}"}].
+
 header_decode_two_bytes_passive(Config) when is_list(Config) ->
-    ClientOpts = ?config(client_opts, Config),
-    ServerOpts = ?config(server_opts, Config),
+    ClientOpts = ssl_test_lib:ssl_options(client_opts, Config),
+    ServerOpts = ssl_test_lib:ssl_options(server_opts, Config),
     {ClientNode, ServerNode, Hostname} = ssl_test_lib:run_where(Config),
 
     Data = <<11:8, "Hello world">>,
@@ -2689,13 +1889,12 @@ header_decode_two_bytes_passive(Config) when is_list(Config) ->
 
 %%--------------------------------------------------------------------
 
-header_decode_two_bytes_two_sent_passive(doc) ->
-    ["Test setting the packet option {header, 2} and sending two byte"];
-header_decode_two_bytes_two_sent_passive(suite) ->
-    [];
+header_decode_two_bytes_two_sent_passive() ->
+    [{doc,"Test setting the packet option {header, 2} and sending two byte"}].
+
 header_decode_two_bytes_two_sent_passive(Config) when is_list(Config) ->
-    ClientOpts = ?config(client_opts, Config),
-    ServerOpts = ?config(server_opts, Config),
+    ClientOpts = ssl_test_lib:ssl_options(client_opts, Config),
+    ServerOpts = ssl_test_lib:ssl_options(server_opts, Config),
     {ClientNode, ServerNode, Hostname} = ssl_test_lib:run_where(Config),
 
     Data = <<"He">>,
@@ -2703,7 +1902,7 @@ header_decode_two_bytes_two_sent_passive(Config) when is_list(Config) ->
     Server = ssl_test_lib:start_server([{node, ClientNode}, {port, 0},
 					{from, self()},
 					{mfa, {?MODULE, server_header_decode_passive,
-					       [Data, [$H, $e]]}},
+					       [Data, [$H, $e | <<>>]]}},
 					{options, [{active, false}, binary,
 						   {header,2}|ServerOpts]}]),
 
@@ -2712,7 +1911,7 @@ header_decode_two_bytes_two_sent_passive(Config) when is_list(Config) ->
 					{host, Hostname},
 					{from, self()},
 					{mfa, {?MODULE, client_header_decode_passive,
-					       [Data, [$H, $e]]}},
+					       [Data, [$H, $e | <<>>]]}},
 					{options, [{active, false}, {header, 2},
 						   binary | ClientOpts]}]),
 
@@ -2724,13 +1923,12 @@ header_decode_two_bytes_two_sent_passive(Config) when is_list(Config) ->
 
 %%--------------------------------------------------------------------
 
-header_decode_two_bytes_one_sent_passive(doc) ->
-    ["Test setting the packet option {header, 2} and sending one byte"];
-header_decode_two_bytes_one_sent_passive(suite) ->
-    [];
+header_decode_two_bytes_one_sent_passive() ->
+    [{doc,"Test setting the packet option {header, 2} and sending one byte"}].
+
 header_decode_two_bytes_one_sent_passive(Config) when is_list(Config) ->
-    ClientOpts = ?config(client_opts, Config),
-    ServerOpts = ?config(server_opts, Config),
+    ClientOpts = ssl_test_lib:ssl_options(client_opts, Config),
+    ServerOpts = ssl_test_lib:ssl_options(server_opts, Config),
     {ClientNode, ServerNode, Hostname} = ssl_test_lib:run_where(Config),
 
     Data = <<"H">>,
@@ -2757,7 +1955,74 @@ header_decode_two_bytes_one_sent_passive(Config) when is_list(Config) ->
     ssl_test_lib:close(Client).
 
 %%--------------------------------------------------------------------
-%% Internal functions
+reject_packet_opt() ->
+    [{doc,"Test packet option is rejected for DTLS over udp"}].
+
+reject_packet_opt(Config) when is_list(Config) ->
+
+    ServerOpts = ssl_test_lib:ssl_options(server_opts, Config),
+       
+    {error,{options,{not_supported,{packet,4}}}} = 
+        ssl:listen(9999, [{packet, 4} | ServerOpts]),
+    {error,{options,{not_supported,{packet_size,1}}}} =  
+        ssl:listen(9999, [{packet_size, 1} | ServerOpts]),
+    {error,{options,{not_supported,{header,1}}}} =
+        ssl:listen(9999, [{header, 1} | ServerOpts]),
+    
+    client_reject_packet_opt(Config, {packet,4}),
+    client_reject_packet_opt(Config, {packet_size, 1}),
+    client_reject_packet_opt(Config, {header, 1}).
+
+%%--------------------------------------------------------------------
+%% Internal functions ------------------------------------------------
+%%--------------------------------------------------------------------
+
+packet(Config, Data, Send, Recv, Quantity, Packet, Active) when Packet == 0;
+								Packet == raw ->
+    ClientOpts = ssl_test_lib:ssl_options(client_opts, Config),
+    ServerOpts = ssl_test_lib:ssl_options(server_opts, Config),
+    {ClientNode, ServerNode, Hostname} = ssl_test_lib:run_where(Config),
+
+    Server = ssl_test_lib:start_server([{node, ClientNode}, {port, 0},
+					{from, self()},
+					{mfa, {?MODULE, Send ,[Data, Quantity]}},
+					{options, [{nodelay, true},{packet, Packet} | ServerOpts]}]),
+    Port = ssl_test_lib:inet_port(Server),
+    Client = ssl_test_lib:start_client([{node, ServerNode}, {port, Port},
+					{host, Hostname},
+					{from, self()},
+					{mfa, {?MODULE, Recv, [Data, Quantity]}},
+					{options, [{active, Active}, {nodelay, true},
+						   {packet, Packet} |
+						   ClientOpts]}]),
+
+    ssl_test_lib:check_result(Client, ok),
+
+    ssl_test_lib:close(Server),
+    ssl_test_lib:close(Client);
+
+packet(Config, Data, Send, Recv, Quantity, Packet, Active) ->
+    ClientOpts = ssl_test_lib:ssl_options(client_opts, Config),
+    ServerOpts = ssl_test_lib:ssl_options(server_opts, Config),
+    {ClientNode, ServerNode, Hostname} = ssl_test_lib:run_where(Config),
+
+    Server = ssl_test_lib:start_server([{node, ClientNode}, {port, 0},
+					{from, self()},
+					{mfa, {?MODULE, Send ,[Data, Quantity]}},
+					{options, [{packet, Packet} | ServerOpts]}]),
+    Port = ssl_test_lib:inet_port(Server),
+    Client = ssl_test_lib:start_client([{node, ServerNode}, {port, Port},
+					{host, Hostname},
+					{from, self()},
+					{mfa, {?MODULE, Recv, [Data, Quantity]}},
+					{options, [{active, Active},
+						   {packet, Packet} |
+						   ClientOpts]}]),
+
+    ssl_test_lib:check_result(Client, ok),
+
+    ssl_test_lib:close(Server),
+    ssl_test_lib:close(Client).
 
 send_raw(Socket,_, 0) ->
     ssl:send(Socket, <<>>),
@@ -2780,14 +2045,14 @@ passive_recv_packet(Socket, _, 0) ->
 	    {error, timeout} = ssl:recv(Socket, 0, 500),
 	    ok;
 	Other ->
-	    {other, Other, ssl:session_info(Socket), 0}
+	    {other, Other, ssl:connection_information(Socket, [session_id, cipher_suite]), 0}
     end;
 passive_recv_packet(Socket, Data, N) ->
     case ssl:recv(Socket, 0) of
 	{ok, Data} -> 
 	    passive_recv_packet(Socket, Data, N-1);
 	Other ->
-	    {other, Other, ssl:session_info(Socket), N}
+	    {other, Other, ssl:connection_information(Socket, [session_id, cipher_suite]), N}
     end.
 
 send(Socket,_, 0) ->
@@ -2818,26 +2083,19 @@ active_once_raw(Socket, Data, N) ->
 
 active_once_raw(_, _, 0, _) ->
     ok;
-active_once_raw(Socket, Data, N, Acc) ->
-    receive 
-	{ssl, Socket, Byte} when length(Byte) == 1 ->
-	    ssl:setopts(Socket, [{active, once}]),
+active_once_raw(Socket, Data, N, Acc0) ->
+    case lists:prefix(Data, Acc0) of
+	true ->
+	    DLen = length(Data),   
+	    Start = DLen + 1,
+	    Len = length(Acc0) - DLen,    
+	    Acc = string:substr(Acc0, Start, Len),   
+	    active_once_raw(Socket, Data, N-1, Acc);
+	false ->	    
 	    receive 
-		{ssl, Socket, _} ->
+		{ssl, Socket, Info}  ->
 		    ssl:setopts(Socket, [{active, once}]),
-		    active_once_raw(Socket, Data, N-1, [])
-	    end;
-	{ssl, Socket, Data} ->
-	    ssl:setopts(Socket, [{active, once}]),
-	    active_once_raw(Socket, Data, N-1, []);
-	{ssl, Socket, Other} ->
-	    case Acc ++ Other of
-		Data ->
-		    ssl:setopts(Socket, [{active, once}]),
-		    active_once_raw(Socket, Data, N-1, []);
-		NewAcc ->
-		    ssl:setopts(Socket, [{active, once}]),
-		    active_once_raw(Socket, Data, N, NewAcc)
+		    active_once_raw(Socket, Data, N, Acc0 ++ Info)
 	    end
     end.
 
@@ -2846,7 +2104,7 @@ active_once_packet(Socket,_, 0) ->
 	{ssl, Socket, []} ->
 	    ok;
 	{ssl, Socket, Other} ->
-	    {other, Other, ssl:session_info(Socket), 0}
+	    {other, Other, ssl:connection_information(Socket,  [session_id, cipher_suite]), 0}
     end;
 active_once_packet(Socket, Data, N) ->
     receive 	
@@ -2864,26 +2122,13 @@ active_once_packet(Socket, Data, N) ->
     active_once_packet(Socket, Data, N-1).
 
 active_raw(Socket, Data, N) ->
-    active_raw(Socket, Data, N, []).
-
-active_raw(_Socket, _, 0, _) ->
+    active_raw(Socket, (length(Data) * N)).
+active_raw(_Socket, 0) ->
     ok;
-active_raw(Socket, Data, N, Acc) ->
+active_raw(Socket, N) ->
     receive 
-	{ssl, Socket, Byte} when length(Byte) == 1 ->
-	    receive
-		{ssl, Socket, _} ->
-		    active_raw(Socket, Data, N -1)
-	    end;
-	{ssl, Socket, Data} ->
-	    active_raw(Socket, Data, N-1, []);
-	{ssl, Socket, Other} ->
-	    case Acc ++ Other of
-		Data ->
-		    active_raw(Socket, Data, N-1, []);
-		NewAcc ->
-		    active_raw(Socket, Data, NewAcc)
-	    end
+	{ssl, Socket, Bytes} ->
+            active_raw(Socket, N-length(Bytes))
     end.
 
 active_packet(Socket, _, 0) ->
@@ -2891,7 +2136,7 @@ active_packet(Socket, _, 0) ->
 	{ssl, Socket, []} ->
 	    ok;
 	Other ->
-	    {other, Other, ssl:session_info(Socket), 0}
+	    {other, Other, ssl:connection_information(Socket,  [session_id, cipher_suite]), 0}
     end;
 active_packet(Socket, Data, N) ->
     receive 
@@ -2903,7 +2148,7 @@ active_packet(Socket, Data, N) ->
 	{ssl, Socket, Data} ->
 	    active_packet(Socket, Data, N -1);
 	Other ->
-	    {other, Other, ssl:session_info(Socket),N}
+	    {other, Other, ssl:connection_information(Socket,  [session_id, cipher_suite]),N}
     end.
 
 assert_packet_opt(Socket, Type) ->
@@ -2919,7 +2164,8 @@ server_packet_decode(Socket, Packet) ->
 	{ssl, Socket, Packet}  -> ok;
 	Other2 -> exit({?LINE, Other2})
     end,
-    ok = ssl:send(Socket, Packet).
+    spawn(fun() -> ssl:send(Socket, Packet) end),
+    ok.
 
 client_packet_decode(Socket, Packet) when is_binary(Packet)->
     <<P1:10/binary, P2/binary>> = Packet,
@@ -2928,14 +2174,12 @@ client_packet_decode(Socket, [Head | Tail] = Packet) ->
     client_packet_decode(Socket, [Head], Tail, Packet).
 
 client_packet_decode(Socket, P1, P2, Packet) ->
-    test_server:format("Packet: ~p ~n", [Packet]),
-    ok = ssl:send(Socket, P1),
-    ok = ssl:send(Socket, P2),
+    spawn(fun() -> ssl:send(Socket, P1), ssl:send(Socket, P2)  end),
     receive
 	{ssl, Socket, Packet}  -> ok;
 	Other1 -> exit({?LINE, Other1})
     end,
-    ok = ssl:send(Socket, Packet),
+    spawn(fun() -> ssl:send(Socket, Packet) end),
     receive
 	{ssl, Socket, Packet}  -> ok;
 	Other2 -> exit({?LINE, Other2})
@@ -2948,10 +2192,11 @@ server_header_decode_active(Socket, Packet, Result) ->
 	{ssl, Socket, Other1} ->
 	    check_header_result(Result, Other1)
     end,
-    ok = ssl:send(Socket, Packet).
+    spawn(fun() -> ssl:send(Socket, Packet) end),
+    ok.
 
 client_header_decode_active(Socket, Packet, Result) ->
-    ok = ssl:send(Socket, Packet),
+    spawn(fun() -> ssl:send(Socket, Packet) end),
     receive
 	{ssl, Socket, Result}  ->
 	    ok;
@@ -2966,11 +2211,11 @@ server_header_decode_passive(Socket, Packet, Result) ->
 	{ok, Other} ->
 	    check_header_result(Result, Other)
     end,
-    ok = ssl:send(Socket, Packet).
+    spawn(fun() -> ssl:send(Socket, Packet) end),
+    ok.
 
 client_header_decode_passive(Socket, Packet, Result) ->
-    ok = ssl:send(Socket, Packet),
-
+    spawn(fun() -> ssl:send(Socket, Packet) end),
     case ssl:recv(Socket, 0) of
 	{ok, Result} ->
 	    ok;
@@ -2983,10 +2228,14 @@ client_header_decode_passive(Socket, Packet, Result) ->
 %% option and the bitsynax makes it obsolete!
 check_header_result([Byte1 | _], [Byte1]) ->
     ok;
+check_header_result([Byte1 | _], [Byte1| <<>>]) ->
+    ok;
 check_header_result([Byte1, Byte2 | _], [Byte1, Byte2]) ->
     ok;
-check_header_result(_,Got) ->
-    exit({?LINE, Got}).
+check_header_result([Byte1, Byte2 | _], [Byte1, Byte2 | <<>>]) ->
+    ok;
+check_header_result(Expected,Got) ->
+    exit({?LINE, {Expected, Got}}).
     
 server_line_packet_decode(Socket, Packet) when is_binary(Packet) ->
     [L1, L2] = string:tokens(binary_to_list(Packet), "\n"),
@@ -3004,7 +2253,8 @@ server_line_packet_decode(Socket, L1, L2, Packet) ->
   	{ssl, Socket,  L2} -> ok;
   	Other2 -> exit({?LINE, Other2})
     end,
-    ok = ssl:send(Socket, Packet).
+    spawn(fun() -> ssl:send(Socket, Packet) end),
+    ok.
 
 client_line_packet_decode(Socket, Packet) when is_binary(Packet)->
     <<P1:10/binary, P2/binary>> = Packet,
@@ -3015,8 +2265,7 @@ client_line_packet_decode(Socket, [Head | Tail] = Packet) ->
     client_line_packet_decode(Socket, [Head], Tail, L1 ++ "\n", L2 ++ "\n").
 
 client_line_packet_decode(Socket, P1, P2, L1, L2) ->
-    ok = ssl:send(Socket, P1),
-    ok = ssl:send(Socket, P2),
+    spawn(fun() -> ssl:send(Socket, P1),  ssl:send(Socket, P2) end),
     receive
   	{ssl, Socket, L1} -> ok;
   	Other1 -> exit({?LINE, Other1})
@@ -3033,3 +2282,47 @@ add_tpkt_header(IOList) when is_list(IOList) ->
     Binary = list_to_binary(IOList),
     L = size(Binary) + 4,
     [3, 0, ((L) bsr 8) band 16#ff, (L) band 16#ff , Binary].
+
+
+client_reject_packet_opt(Config, PacketOpt) ->
+    ServerOpts = ssl_test_lib:ssl_options(server_opts, Config),
+    ClientOpts = ssl_test_lib:ssl_options(client_opts, Config),
+    {ClientNode, ServerNode, Hostname} = ssl_test_lib:run_where(Config),
+
+    Server = ssl_test_lib:start_server([{node, ClientNode}, {port, 0},
+                                        {from, self()},
+                                        {mfa, {ssl_test_lib, no_result_msg ,[]}},
+                                        {options, ServerOpts}]),
+    Port = ssl_test_lib:inet_port(Server),
+    Client = ssl_test_lib:start_client_error([{node, ServerNode}, {port, Port},
+                                              {host, Hostname},
+                                              {from, self()},
+                                              {mfa, {ssl_test_lib, no_result_msg, []}},
+                                              {options, [PacketOpt |
+                                                         ClientOpts]}]),
+    
+    ssl_test_lib:check_result(Client, {error, {options, {not_supported, PacketOpt}}}).
+
+
+send_switch_packet(SslSocket, Data, NextPacket) ->
+    spawn(fun() -> ssl:send(SslSocket, Data) end),
+    receive
+        {ssl, SslSocket, "Hello World"} ->
+            ssl:setopts(SslSocket, [{packet, NextPacket}]),
+            spawn(fun() -> ssl:send(SslSocket, Data) end),
+            receive 
+                {ssl, SslSocket, "Hello World"} ->
+                    ok
+            end
+    end.
+recv_switch_packet(SslSocket, Data, NextPacket) ->
+    receive
+        {ssl, SslSocket, "Hello World"} ->
+            spawn(fun() -> ssl:send(SslSocket, Data) end),
+            ssl:setopts(SslSocket, [{packet, NextPacket}]),
+            receive 
+                {ssl, SslSocket, "Hello World"} ->
+                    spawn(fun() -> ssl:send(SslSocket, Data) end),
+                    ok                        
+            end
+    end.

@@ -1,18 +1,19 @@
 /*
  * %CopyrightBegin%
  * 
- * Copyright Ericsson AB 2002-2009. All Rights Reserved.
+ * Copyright Ericsson AB 2002-2016. All Rights Reserved.
  * 
- * The contents of this file are subject to the Erlang Public License,
- * Version 1.1, (the "License"); you may not use this file except in
- * compliance with the License. You should have received a copy of the
- * Erlang Public License along with this software. If not, it can be
- * retrieved online at http://www.erlang.org/.
- * 
- * Software distributed under the License is distributed on an "AS IS"
- * basis, WITHOUT WARRANTY OF ANY KIND, either express or implied. See
- * the License for the specific language governing rights and limitations
- * under the License.
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  * 
  * %CopyrightEnd%
  */
@@ -96,11 +97,19 @@ int main(void)
   EI_ULONGLONG *ulonglongp = (EI_ULONGLONG*)NULL;
   EI_ULONGLONG ulonglongx = 0;
 #endif
+  erlang_char_encoding enc;
+  ei_socket_callbacks cbs;
 
   intx = erl_errno;
 
+  ei_init();
+
+  ei_close_connection(intx);
+  
   ei_connect_init(&xec, charp, charp, creation);
+  ei_connect_init_ussi(&xec, charp, charp, creation, &cbs, sizeof(cbs), NULL);
   ei_connect_xinit (&xec, charp, charp, charp, thisipaddr, charp, creation);
+  ei_connect_xinit_ussi(&xec, charp, charp, charp, thisipaddr, charp, creation, &cbs, sizeof(cbs), NULL);
 
   ei_connect(&xec, charp);
   ei_xconnect (&xec, thisipaddr, charp);
@@ -119,6 +128,8 @@ int main(void)
   ei_publish(&xec, intx);
   ei_accept(&xec, intx, &conp);
   ei_unpublish(&xec);
+  ei_listen(&xec, intp, intx);
+  ei_xlisten(&xec, thisipaddr, intp, intx);
 
   ei_thisnodename(&xec);
   ei_thishostname(&xec);
@@ -148,9 +159,13 @@ int main(void)
   ei_x_encode_string(&eix, charp);
   ei_x_encode_string_len(&eix, charp, intx);
   ei_encode_atom(charp, intp, charp);
+  ei_encode_atom_as(charp, intp, charp, ERLANG_LATIN1, ERLANG_UTF8);
   ei_encode_atom_len(charp, intp, charp, intx);
+  ei_encode_atom_len_as(charp, intp, charp, intx, ERLANG_ASCII, ERLANG_LATIN1);
   ei_x_encode_atom(&eix, charp);
+  ei_x_encode_atom_as(&eix, charp, ERLANG_LATIN1, ERLANG_UTF8);
   ei_x_encode_atom_len(&eix, charp, intx);
+  ei_x_encode_atom_len_as(&eix, charp, intx, ERLANG_LATIN1, ERLANG_UTF8);
   ei_encode_binary(charp, intp, (void *)0, longx);
   ei_x_encode_binary(&eix, (void*)0, intx);
   ei_encode_pid(charp, intp, &epid);
@@ -171,7 +186,6 @@ int main(void)
   ei_x_encode_empty_list(&eix);
 
   ei_get_type(charp, intp, intp, intp);
-  ei_get_type_internal(charp, intp, intp, intp);
 
   ei_decode_version(charp, intp, intp);
   ei_decode_long(charp, intp, longp);
@@ -181,6 +195,7 @@ int main(void)
   ei_decode_char(charp, intp, charp);
   ei_decode_string(charp, intp, charp);
   ei_decode_atom(charp, intp, charp);
+  ei_decode_atom_as(charp, intp, charp, MAXATOMLEN_UTF8, ERLANG_UTF8, &enc, &enc);
   ei_decode_binary(charp, intp, (void *)0, longp);
   ei_decode_fun(charp, intp, &efun);
   free_fun(&efun);

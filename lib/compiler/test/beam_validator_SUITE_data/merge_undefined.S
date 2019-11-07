@@ -15,19 +15,22 @@
     {select_val,{x,0},{f,1},{list,[{atom,gurka},{f,3},{atom,delete},{f,4}]}}.
   {label,3}.
     {allocate_heap,2,6,2}.
-    %% The Y registers are not initialized here.
     {test,is_eq_exact,{f,5},[{x,0},{atom,ok}]}.
+    %% This is unreachable since {x,0} is known not to be 'ok'. We should not
+    %% fail with "uninitialized y registers" on erlang:exit/1
     {move,{atom,nisse},{x,0}}.
     {call_ext,1,{extfunc,erlang,exit,1}}.
   {label,4}.
     {allocate_heap,1,6,2}.
     {move,{x,1},{y,0}}.
-    {put_string,2,{string,"~p"},{x,0}}.
+    {put_list,{integer,112},nil,{x,0}}.
+    {put_list,{integer,126},{x,0},{x,0}}.
     {put_list,{y,0},nil,{x,1}}.
     {'%live',2}.
     {call_ext,2,{extfunc,io,format,2}}.
     {test,is_ne_exact,{f,6},[{x,0},{atom,ok}]}.
   {label,5}.
+    %% The Y registers are not initialized here.
     {move,{atom,logReader},{x,1}}.
     {move,{atom,console},{x,0}}.
     {call_ext,2,{extfunc,debug,filter,2}}.

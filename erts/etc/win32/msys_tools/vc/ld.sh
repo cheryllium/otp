@@ -3,18 +3,19 @@
 # 
 # %CopyrightBegin%
 # 
-# Copyright Ericsson AB 2002-2011. All Rights Reserved.
+# Copyright Ericsson AB 2002-2016. All Rights Reserved.
 # 
-# The contents of this file are subject to the Erlang Public License,
-# Version 1.1, (the "License"); you may not use this file except in
-# compliance with the License. You should have received a copy of the
-# Erlang Public License along with this software. If not, it can be
-# retrieved online at http://www.erlang.org/.
-# 
-# Software distributed under the License is distributed on an "AS IS"
-# basis, WITHOUT WARRANTY OF ANY KIND, either express or implied. See
-# the License for the specific language governing rights and limitations
-# under the License.
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
 # 
 # %CopyrightEnd%
 # 
@@ -177,7 +178,10 @@ if [ "$RES" = "0" -a -f "$CMANIFEST" ]; then
     RES=$?
     if [ "$RES" != "0" ]; then
 	REMOVE=`echo "$OUTPUTRES" | sed 's,\\\;[12]$,,g'`
-	CREMOVE=`cygpath $REMOVE`
+	CREMOVE=`win2msys_path.sh $REMOVE`
+        ## If Defender or Search are enabled, they will lock just created files
+        ## and then mt will fail :/
+        echo "If you get this error, make sure Windows Defender AND Windows Search is disabled">>/tmp/link.exe.${p}.1
 	rm -f "$CREMOVE"
     fi
     rm -f "$CMANIFEST"

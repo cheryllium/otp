@@ -2,18 +2,19 @@
 
 # %CopyrightBegin%
 # 
-# Copyright Ericsson AB 2004-2009. All Rights Reserved.
+# Copyright Ericsson AB 2004-2019. All Rights Reserved.
 # 
-# The contents of this file are subject to the Erlang Public License,
-# Version 1.1, (the "License"); you may not use this file except in
-# compliance with the License. You should have received a copy of the
-# Erlang Public License along with this software. If not, it can be
-# retrieved online at http://www.erlang.org/.
-# 
-# Software distributed under the License is distributed on an "AS IS"
-# basis, WITHOUT WARRANTY OF ANY KIND, either express or implied. See
-# the License for the specific language governing rights and limitations
-# under the License.
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
 # 
 # %CopyrightEnd%
 
@@ -21,15 +22,34 @@ BEHAVIOUR_MODULES = \
 	snmpa_authentication_service \
 	snmpa_discovery_handler \
 	snmpa_error_report \
+	snmpa_get_mechanism \
+	snmpa_mib_storage \
+	snmpa_mib_data \
 	snmpa_network_interface \
 	snmpa_network_interface_filter \
 	snmpa_notification_delivery_info_receiver \
 	snmpa_notification_filter \
 	snmpa_set_mechanism
 
+MIB_MODULES = \
+	snmp_community_mib \
+	snmp_framework_mib \
+	snmp_notification_mib \
+	snmp_standard_mib \
+	snmp_target_mib \
+	snmp_user_based_sm_mib \
+	snmp_view_based_acm_mib
+
+# snmpa is "plain" interface module but also defines some agent specific types
+# and therefor must be compiled before the modules that use them, including
+# the behaviour modules...
+# Some of the MIB modules also define types used elsewhere and therefor
+# has to be built before the other mods.
+# snmpa_mib_data_ttln
 MODULES = \
-	$(BEHAVIOUR_MODULES) \
 	snmpa \
+	$(MIB_MODULES) \
+	$(BEHAVIOUR_MODULES) \
 	snmpa_acm \
 	snmpa_agent \
 	snmpa_agent_sup \
@@ -39,10 +59,14 @@ MODULES = \
 	snmpa_error \
 	snmpa_error_io \
 	snmpa_error_logger \
-	snmpa_general_db \
+	snmpa_get \
+	snmpa_get_lib \
 	snmpa_local_db \
+	snmpa_mib_storage_ets \
+	snmpa_mib_storage_dets \
+	snmpa_mib_storage_mnesia \
 	snmpa_mib \
-	snmpa_mib_data \
+	snmpa_mib_data_tttn \
 	snmpa_mib_lib \
 	snmpa_misc_sup \
 	snmpa_mpd \
@@ -57,17 +81,10 @@ MODULES = \
 	snmpa_trap \
 	snmpa_usm \
 	snmpa_vacm \
-	snmp_community_mib \
-	snmp_framework_mib \
 	snmp_generic \
 	snmp_generic_mnesia \
 	snmp_index \
-	snmp_notification_mib \
-	snmp_shadow_table \
-	snmp_standard_mib \
-	snmp_target_mib \
-	snmp_user_based_sm_mib \
-	snmp_view_based_acm_mib
+	snmp_shadow_table
 
 
 INTERNAL_HRL_FILES = \

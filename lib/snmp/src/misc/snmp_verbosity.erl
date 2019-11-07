@@ -1,18 +1,19 @@
 %% 
 %% %CopyrightBegin%
 %% 
-%% Copyright Ericsson AB 2000-2012. All Rights Reserved.
+%% Copyright Ericsson AB 2000-2019. All Rights Reserved.
 %% 
-%% The contents of this file are subject to the Erlang Public License,
-%% Version 1.1, (the "License"); you may not use this file except in
-%% compliance with the License. You should have received a copy of the
-%% Erlang Public License along with this software. If not, it can be
-%% retrieved online at http://www.erlang.org/.
-%% 
-%% Software distributed under the License is distributed on an "AS IS"
-%% basis, WITHOUT WARRANTY OF ANY KIND, either express or implied. See
-%% the License for the specific language governing rights and limitations
-%% under the License.
+%% Licensed under the Apache License, Version 2.0 (the "License");
+%% you may not use this file except in compliance with the License.
+%% You may obtain a copy of the License at
+%%
+%%     http://www.apache.org/licenses/LICENSE-2.0
+%%
+%% Unless required by applicable law or agreed to in writing, software
+%% distributed under the License is distributed on an "AS IS" BASIS,
+%% WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+%% See the License for the specific language governing permissions and
+%% limitations under the License.
 %% 
 %% %CopyrightEnd%
 %% 
@@ -69,16 +70,7 @@ print2(_Verbosity,Format,Arguments) ->
 
 
 timestamp() ->
-    format_timestamp(now()).
-
-format_timestamp({_N1, _N2, N3} = Now) ->
-    {Date, Time}   = calendar:now_to_datetime(Now),
-    {YYYY,MM,DD}   = Date,
-    {Hour,Min,Sec} = Time,
-    FormatDate =
-        io_lib:format("~.4w:~.2.0w:~.2.0w ~.2.0w:~.2.0w:~.2.0w ~w",
-                      [YYYY,MM,DD,Hour,Min,Sec,round(N3/1000)]),
-    lists:flatten(FormatDate).
+    snmp_misc:formated_timestamp().
 
 process_args([], Acc) ->
     lists:reverse(Acc);
@@ -148,11 +140,14 @@ image_of_sname(mnifl)     -> "M-NET-IF-LOGGER";
 image_of_sname(mnifw)     -> io_lib:format("M-NET-IF-worker(~p)", [self()]);
 image_of_sname(mconf)     -> "M-CONF";
 
+image_of_sname(lc)        -> io_lib:format("LOG-CONVERTER(~p)", [self()]);
+
 image_of_sname(mgr)       -> "MGR";
 image_of_sname(mgr_misc)  -> "MGR_MISC";
 
 image_of_sname(undefined) -> "";
-image_of_sname(V)         -> lists:flatten(io_lib:format("~p",[V])).
+image_of_sname(N) when is_list(N) -> N; % Used in testing
+image_of_sname(N)         -> lists:flatten(io_lib:format("~p", [N])).
 
 
 validate(info)  -> info;
@@ -160,4 +155,3 @@ validate(log)   -> log;
 validate(debug) -> debug;
 validate(trace) -> trace;
 validate(_)     -> silence.
-

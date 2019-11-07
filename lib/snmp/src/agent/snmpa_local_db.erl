@@ -1,18 +1,19 @@
 %%
 %% %CopyrightBegin%
 %% 
-%% Copyright Ericsson AB 1996-2012. All Rights Reserved.
+%% Copyright Ericsson AB 1996-2019. All Rights Reserved.
 %% 
-%% The contents of this file are subject to the Erlang Public License,
-%% Version 1.1, (the "License"); you may not use this file except in
-%% compliance with the License. You should have received a copy of the
-%% Erlang Public License along with this software. If not, it can be
-%% retrieved online at http://www.erlang.org/.
-%% 
-%% Software distributed under the License is distributed on an "AS IS"
-%% basis, WITHOUT WARRANTY OF ANY KIND, either express or implied. See
-%% the License for the specific language governing rights and limitations
-%% under the License.
+%% Licensed under the Apache License, Version 2.0 (the "License");
+%% you may not use this file except in compliance with the License.
+%% You may obtain a copy of the License at
+%%
+%%     http://www.apache.org/licenses/LICENSE-2.0
+%%
+%% Unless required by applicable law or agreed to in writing, software
+%% distributed under the License is distributed on an "AS IS" BASIS,
+%% WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+%% See the License for the specific language governing permissions and
+%% limitations under the License.
 %% 
 %% %CopyrightEnd%
 %%
@@ -146,12 +147,13 @@ init([Prio, DbDir, DbInitError, Opts]) ->
 do_init(Prio, DbDir, DbInitError, Opts) ->
     process_flag(priority, Prio),
     process_flag(trap_exit, true),
-    put(sname,ldb),
-    put(verbosity,get_opt(verbosity, Opts, ?default_verbosity)),
+    put(sname,     get_opt(sname, Opts, ldb)),
+    put(verbosity, get_opt(verbosity, Opts, ?default_verbosity)),
     ?vlog("starting",[]),
     Dets = dets_open(DbDir, DbInitError, Opts),
     Ets  = ets:new(?ETS_TAB, [set, protected]),
     ?vdebug("started",[]),
+    put(started,   snmp_misc:formated_timestamp()),
     {ok, #state{dets = Dets, ets = Ets}}.
 
 dets_open(DbDir, DbInitError, Opts) ->
@@ -191,6 +193,12 @@ dets_open(DbDir, DbInitError, Opts) ->
 		    end
 	    end;
 	_ ->
+	    case DbInitError of
+		create_db_and_dir ->
+		    ok = filelib:ensure_dir(Filename);
+		_ ->
+		    ok
+	    end,
 	    case do_dets_open(Name, Filename, Opts) of
 		{ok, Dets} ->
 		    ?vdebug("dets open done",[]),
@@ -583,7 +591,7 @@ handle_cast({variable_inc, Name, Db, N}, State) ->
 	    {value, Val} -> Val;
 	    _ -> 0 
 	end,
-    insert(Db, Name, M+N rem 4294967296, State),
+    insert(Db, Name, (M+N) rem 4294967296, State),
     {noreply, State};
     
 handle_cast({verbosity,Verbosity}, State) ->
@@ -618,7 +626,7 @@ handle_info(Info, State) ->
 
 
 terminate(Reason, State) ->
-    ?vlog("terminate: ~p",[Reason]),
+    ?vlog("terminate: ~p", [Reason]),
     close(State).
 
 
@@ -725,16 +733,16 @@ dets_backup(close, _Cont, _D, B) ->
     ok;
 dets_backup(read, Cont1, D, B) ->
     case dets:bchunk(D, Cont1) of
+	{error, _} = ERROR ->
+	    ERROR;
+	'$end_of_table' ->
+	    dets:close(B),
+	    end_of_input;
 	{Cont2, Data} ->
 	    F = fun(Arg) ->
 			dets_backup(Arg, Cont2, D, B)
 		end,
-	    {Data, F};
-	'$end_of_table' ->
-	    dets:close(B),
-	    end_of_input;
-	Error ->
-	    Error
+	    {Data, F}
     end.
 
 
@@ -1005,6 +1013,10 @@ table_construct_row(Name, RowIndex, Status, Cols) ->
 		defvals = Defs, status_col = StatusCol,
 		first_own_index = FirstOwnIndex, not_accessible = NoAccs} =
 	snmp_generic:table_info(Name),
+    ?vtrace(
+       "table_construct_row Indexes: ~p~n"
+       "    RowIndex: ~p",
+       [Indexes, RowIndex]),
     Keys = snmp_generic:split_index_to_keys(Indexes, RowIndex),
     OwnKeys = snmp_generic:get_own_indexes(FirstOwnIndex, Keys),
     Row = OwnKeys ++ snmp_generic:table_create_rest(length(OwnKeys) + 1,

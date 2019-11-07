@@ -1,18 +1,19 @@
 %%
 %% %CopyrightBegin%
 %%
-%% Copyright Ericsson AB 2012. All Rights Reserved.
+%% Copyright Ericsson AB 2012-2017. All Rights Reserved.
 %%
-%% The contents of this file are subject to the Erlang Public License,
-%% Version 1.1, (the "License"); you may not use this file except in
-%% compliance with the License. You should have received a copy of the
-%% Erlang Public License along with this software. If not, it can be
-%% retrieved online at http://www.erlang.org/.
+%% Licensed under the Apache License, Version 2.0 (the "License");
+%% you may not use this file except in compliance with the License.
+%% You may obtain a copy of the License at
 %%
-%% Software distributed under the License is distributed on an "AS IS"
-%% basis, WITHOUT WARRANTY OF ANY KIND, either express or implied. See
-%% the License for the specific language governing rights and limitations
-%% under the License.
+%%     http://www.apache.org/licenses/LICENSE-2.0
+%%
+%% Unless required by applicable law or agreed to in writing, software
+%% distributed under the License is distributed on an "AS IS" BASIS,
+%% WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+%% See the License for the specific language governing permissions and
+%% limitations under the License.
 %%
 %% %CopyrightEnd%
 %%
@@ -26,12 +27,15 @@
 -export([suite/0,
          all/0,
          groups/0,
+         init_per_suite/1,
+         end_per_suite/1,
          init_per_group/2,
          end_per_group/2]).
 
 %% testcases
 -export([start/1,
          connect/1,
+         send_dpr/1,
          remove_transport/1,
          stop_service/1,
          check/1,
@@ -41,6 +45,7 @@
 -export([disconnect/5]).
 
 -include("diameter.hrl").
+-include("diameter_gen_base_rfc6733.hrl").
 
 %% ===========================================================================
 
@@ -51,20 +56,14 @@
 -define(CLIENT, "CLIENT").
 -define(SERVER, "SERVER").
 
--define(DICT_COMMON, ?DIAMETER_DICT_COMMON).
--define(APP_ID, ?DICT_COMMON:id()).
-
 %% Config for diameter:start_service/2.
 -define(SERVICE(Host),
-        [{'Origin-Host', Host},
+        [{'Origin-Host', Host ++ ".erlang.org"},
          {'Origin-Realm', "erlang.org"},
          {'Host-IP-Address', [?ADDR]},
          {'Vendor-Id', hd(Host)},  %% match this in disconnect/5
          {'Product-Name', "OTP/diameter"},
-         {'Acct-Application-Id', [?APP_ID]},
-         {restrict_connections, false},
-         {application, [{dictionary, ?DICT_COMMON},
-                        {module, #diameter_callback{_ = false}}]}]).
+         {restrict_connections, false}]).
 
 %% Disconnect reasons that diameter passes as the first argument of a
 %% function configured as disconnect_cb.
@@ -73,11 +72,13 @@
 %% Valid values for Disconnect-Cause.
 -define(CAUSES, [0, rebooting, 1, busy, 2, goaway]).
 
-%% Establish one client connection for element of this list,
-%% configured with disconnect/5 as disconnect_cb and returning the
-%% specified value.
+%% Establish one client connection for each element of this list,
+%% configured with disconnect/5, disconnect_cb returning the specified
+%% value.
 -define(RETURNS,
-        [[close, {dpr, [{cause, invalid}]}], [ignore, close], []]
+        [[close, {dpr, [{cause, invalid}]}],
+         [ignore, close],
+         []]
         ++ [[{dpr, [{timeout, 5000}, {cause, T}]}] || T <- ?CAUSES]).
 
 %% ===========================================================================
@@ -86,13 +87,19 @@ suite() ->
     [{timetrap, {seconds, 60}}].
 
 all() ->
-    [{group, R} || R <- ?REASONS].
+    [{group, R} || R <- [client, server, uncommon | ?REASONS]].
 
 %% The group determines how transports are terminated: by remove_transport,
 %% stop_service or application stop.
 groups() ->
-    Ts = tc(),
-    [{R, [], Ts} || R <- ?REASONS].
+    [{R, [], [start, send_dpr, stop]} || R <- [client, server, uncommon]]
+        ++ [{R, [], Ts} || Ts <- [tc()], R <- ?REASONS].
+
+init_per_suite(Config) ->  %% not need, but a useful place to enable trace
+    Config.
+
+end_per_suite(_Config) ->
+    ok.
 
 init_per_group(Name, Config) ->
     [{group, Name} | Config].
@@ -104,12 +111,85 @@ tc() ->
     [start, connect, remove_transport, stop_service, check, stop].
 
 %% ===========================================================================
-%% start/stop testcases
 
-start(_Config) ->
+%% start/1
+
+start(Config)
+  when is_list(Config) ->
+    Grp = group(Config),
     ok = diameter:start(),
-    ok = diameter:start_service(?SERVER, ?SERVICE(?SERVER)),
-    ok = diameter:start_service(?CLIENT, ?SERVICE(?CLIENT)).
+    ok = diameter:start_service(?SERVER, service(?SERVER, Grp)),
+    ok = diameter:start_service(?CLIENT, service(?CLIENT, Grp)).
+
+service(?SERVER = Svc, _) ->
+    ?SERVICE(Svc)
+        ++ [{'Acct-Application-Id', [0,3]},
+            {application, [{dictionary, diameter_gen_base_rfc6733},
+                           {alias, common},
+                           {module, #diameter_callback{_ = false}}]},
+            {application, [{dictionary, diameter_gen_acct_rfc6733},
+                           {alias, acct},
+                           {module, #diameter_callback{_ = false}}]}];
+
+%% Client that receives a server DPR despite no explicit support for
+%% Diameter common messages.
+service(?CLIENT = Svc, server) ->
+    ?SERVICE(Svc)
+        ++ [{'Acct-Application-Id', [3]},
+            {application, [{dictionary, diameter_gen_acct_rfc6733},
+                           {alias, acct},
+                           {module, #diameter_callback{_ = false}}]}];
+
+%% Client that sends DPR despite advertised only the accounting
+%% application. The dictionary is required for encode.
+service(?CLIENT = Svc, uncommon) ->
+    ?SERVICE(Svc)
+        ++ [{'Acct-Application-Id', [3]},
+            {application, [{dictionary, diameter_gen_base_rfc6733},
+                           {alias, common},
+                           {module, #diameter_callback{_ = false}}]},
+            {application, [{dictionary, diameter_gen_acct_rfc6733},
+                           {alias, acct},
+                           {module, #diameter_callback{_ = false}}]}];
+
+service(?CLIENT = Svc, _) ->
+    ?SERVICE(Svc)
+        ++ [{'Auth-Application-Id', [0]},
+            {application, [{dictionary, diameter_gen_base_rfc6733},
+                           {alias, common},
+                           {module, #diameter_callback{_ = false}}]}].
+
+%% send_dpr/1
+
+send_dpr(Config) ->
+    LRef = ?util:listen(?SERVER, tcp),
+    Ref = ?util:connect(?CLIENT, tcp, LRef, [{dpa_timeout, 10000}]),
+    Svc = sender(group(Config)),
+    [Info] = diameter:service_info(Svc, connections),
+    {_, {TPid, _}} = lists:keyfind(peer, 1, Info),
+    #diameter_base_DPA{'Result-Code' = 2001}
+        = diameter:call(Svc,
+                        common,
+                        ['DPR', {'Origin-Host', Svc ++ ".erlang.org"},
+                         {'Origin-Realm', "erlang.org"},
+                         {'Disconnect-Cause', 0}],
+                        [{peer, TPid}]),
+    ok =  receive  %% ensure the transport dies on DPA
+              #diameter_event{service = ?CLIENT, info = {down, Ref, _, _}} ->
+                  ok
+          after 5000 ->
+                  erlang:process_info(self(), messages)
+          end.
+
+%% sender/1
+
+sender(server) ->
+    ?SERVER;
+
+sender(_) ->
+    ?CLIENT.
+
+%% connect/1
 
 connect(Config) ->
     Pid = spawn(fun init/0),  %% process for disconnect_cb to bang
@@ -119,18 +199,24 @@ connect(Config) ->
             || RCs <- ?RETURNS],
     ?util:write_priv(Config, config, [Pid | Refs]).
 
+%% remove_transport/1
+
 %% Remove all the client transports only in the transport group.
 remove_transport(Config) ->
     transport == group(Config)
         andalso (ok = diameter:remove_transport(?CLIENT, true)).
+
+%% stop_service/1
 
 %% Stop the service only in the service group.
 stop_service(Config) ->
     service == group(Config)
         andalso (ok = diameter:stop_service(?CLIENT)).
 
-%% Check for callbacks and stop the service. (Not the other way around
-%% for the timing reason explained below.)
+%% check/1
+
+%% Check for callbacks before diameter:stop/0, not the other way around
+%% for the timing reason explained below.
 check(Config) ->
     Grp = group(Config),
     [Pid | Refs] = ?util:read_priv(Config, config),
@@ -138,8 +224,12 @@ check(Config) ->
     Dict = receive {Pid, D} -> D end,  %% get it
     check(Refs, ?RETURNS, Grp, Dict).  %% check for callbacks
 
+%% stop/1
+
 stop(_Config) ->
     ok = diameter:stop().
+
+%% ===========================================================================
 
 %% Whether or not there are callbacks after diameter:stop() depends on
 %% timing as long as the server runs on the same node: a server

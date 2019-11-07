@@ -1,18 +1,19 @@
 %%
 %% %CopyrightBegin%
 %% 
-%% Copyright Ericsson AB 2000-2010. All Rights Reserved.
+%% Copyright Ericsson AB 2000-2019. All Rights Reserved.
 %% 
-%% The contents of this file are subject to the Erlang Public License,
-%% Version 1.1, (the "License"); you may not use this file except in
-%% compliance with the License. You should have received a copy of the
-%% Erlang Public License along with this software. If not, it can be
-%% retrieved online at http://www.erlang.org/.
-%% 
-%% Software distributed under the License is distributed on an "AS IS"
-%% basis, WITHOUT WARRANTY OF ANY KIND, either express or implied. See
-%% the License for the specific language governing rights and limitations
-%% under the License.
+%% Licensed under the Apache License, Version 2.0 (the "License");
+%% you may not use this file except in compliance with the License.
+%% You may obtain a copy of the License at
+%%
+%%     http://www.apache.org/licenses/LICENSE-2.0
+%%
+%% Unless required by applicable law or agreed to in writing, software
+%% distributed under the License is distributed on an "AS IS" BASIS,
+%% WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+%% See the License for the specific language governing permissions and
+%% limitations under the License.
 %% 
 %% %CopyrightEnd%
 %%
@@ -25,7 +26,6 @@
 %% megaco_call_flow_test:compact_text().
 %% megaco_call_flow_test:bin().
 %% megaco_call_flow_test:asn1_ber().
-%% megaco_call_flow_test:asn1_ber_bin().
 %% megaco_call_flow_test:asn1_per().
 %% megaco_call_flow_test:erl_dist().
 %% megaco_call_flow_test:compressed_erl_dist().
@@ -38,7 +38,85 @@
 
 -module(megaco_call_flow_test).
 
--compile(export_all).
+-export([
+         all/0,
+         groups/0,
+
+         init_per_group/2,
+         end_per_group/2,
+         init_per_testcase/2,
+         end_per_testcase/2,
+
+         pretty/1,
+         compact/1,
+         pretty_flex/1,
+         compact_flex/1,
+         bin/1,
+         ber/1,
+         per/1,
+         standard_erl/1,
+         compressed_erl/1,
+
+         t/0, t/1
+
+        ]).
+
+-export([
+         msg1/0,   msg1/1,
+         msg2/0,   msg2/1,
+         msg3/0,   msg3/1,
+         msg4/0,   msg4/1,
+         msg5a/0,  msg5a/1,
+         msg5b/0,  msg5b/1,
+         msg6/0,   msg6/1,
+         msg7/0,   msg7/1,
+         msg9/0,   msg9/1,
+         msg10/0,  msg10/1,
+         msg11/0,  msg11/1,
+         msg12/0,  msg12/1,
+         msg13/0,  msg13/1,
+         msg14/0,  msg14/1,
+         msg15/0,  msg15/1,
+         msg16/0,  msg16/1,
+         msg17a/0, msg17a/1,
+         msg17b/0, msg17b/1,
+         msg18a/0, msg18a/1,
+         msg18b/0, msg18b/1,
+         msg18c/0, msg18c/1,
+         msg18d/0, msg18d/1,
+         msg19a/0, msg19a/1,
+         msg19b/0, msg19b/1,
+         msg20/0,  msg20/1,
+         msg21/0,  msg21/1,
+         msg22a/0, msg22a/1,
+         msg22b/0, msg22b/1,
+         msg23a/0, msg23a/1,
+         msg23b/0, msg23b/1
+         
+        ]).
+
+-export([
+         encoders/0,
+         msg_sizes/0,
+         coding_times/0,
+         encoding_times/0,
+         decoding_times/0,
+         coding_times_stat/0,
+         encoding_times_stat/0,
+         decoding_times_stat/0,
+         size_stat/0,
+         gnuplot_gif/0,
+         gnuplot_size_gif/0,
+
+         gen_byte_msg/2,
+         gen_header_file_binary/1,
+         gen_ber_header/0,
+         gen_ber_bin_header/0,
+         gen_per_header/0,
+         single_meter/4,
+         count/2
+        ]).
+
 -include_lib("megaco/include/megaco.hrl").
 -include_lib("megaco/include/megaco_message_v1.hrl").
 -include("megaco_test_lib.hrl").
@@ -53,16 +131,20 @@ init_per_testcase(Case, Config) ->
 end_per_testcase(Case, Config) ->
     megaco_test_lib:end_per_testcase(Case, Config).
 
+
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %% Top test case
 
 all() -> 
-    [{group, text}, {group, binary}].
+    [{group, text}, {group, binary}, {group, erl}].
 
 groups() -> 
-    [{text, [], [pretty, compact]},
-     {flex, [], [pretty_flex, compact_flex]},
-     {binary, [], [bin, ber, ber_bin, per]}].
+    [
+     {text,   [], [pretty, compact]},
+     {flex,   [], [pretty_flex, compact_flex]},
+     {binary, [], [bin, ber, per]},
+     {erl,    [], [standard_erl, compressed_erl]}
+    ].
 
 init_per_group(_GroupName, Config) ->
     Config.
@@ -105,12 +187,6 @@ ber(suite) ->
 ber(Config) when is_list(Config) ->
     ?ACQUIRE_NODES(1, Config),
     asn1_ber().
-
-ber_bin(suite) ->
-    [];
-ber_bin(Config) when is_list(Config) ->
-    ?ACQUIRE_NODES(1, Config),
-    asn1_ber_bin().
 
 per(suite) ->
     [];
@@ -1198,8 +1274,7 @@ encoders() ->
      {megaco_pretty_text_encoder,  [], 	         []},
      {megaco_compact_text_encoder, [], 	         []},
      {megaco_binary_encoder,       [], 	         [native]},
-     %% {megaco_ber_encoder,       [],           [native]},
-     %% {megaco_ber_bin_encoder,   [],           [native]},
+     {megaco_ber_encoder,          [],           [native]},
      {megaco_per_encoder,          [], 	         [native]},
      {megaco_erl_dist_encoder,     [],      	 []},
      {megaco_erl_dist_encoder,     [compressed], [compressed]}
@@ -1214,7 +1289,6 @@ pretty_mod({Mod, Opt, _Opt2}) ->
 	megaco_compact_text_encoder -> compact_text;
 	megaco_binary_encoder       -> asn1_ber;
 	megaco_ber_encoder          -> asn1_ber_old;
-	megaco_ber_bin_encoder      -> asn1_ber_bin;
 	megaco_per_encoder          -> asn1_per;
 	megaco_erl_dist_encoder when Opt == []           -> standard_erl;
 	megaco_erl_dist_encoder when Opt == [compressed] -> compressed_erl;
@@ -1260,13 +1334,6 @@ asn1_ber() ->
     Default = [],
     Native = [native],
     Encoder = {megaco_ber_encoder, Default, Native},
-    All = [encode(Slogan, Msg, Encoder) || {Slogan, Msg} <- messages()],
-    compute_res(All).
-
-asn1_ber_bin() ->
-    Default = [],
-    Native = [native],
-    Encoder = {megaco_ber_bin_encoder, Default, Native},
     All = [encode(Slogan, Msg, Encoder) || {Slogan, Msg} <- messages()],
     compute_res(All).
 
@@ -1634,7 +1701,7 @@ gen_ber_header() ->
 %% Generate headerfile for asn.1 BER test in C
 %%----------------------------------------------------------------------
 gen_ber_bin_header() ->
-    Encoder = {megaco_ber_bin_encoder, [], []},
+    Encoder = {megaco_ber_encoder, [], []},
     L = [{S, gen_byte_msg(Msg, Encoder)} ||  {S, Msg} <- messages()],
     gen_header_file_binary(L).
 

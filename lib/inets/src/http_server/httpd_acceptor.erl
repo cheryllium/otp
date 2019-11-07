@@ -1,18 +1,19 @@
 %%
 %% %CopyrightBegin%
 %%
-%% Copyright Ericsson AB 2001-2011. All Rights Reserved.
+%% Copyright Ericsson AB 2001-2016. All Rights Reserved.
 %%
-%% The contents of this file are subject to the Erlang Public License,
-%% Version 1.1, (the "License"); you may not use this file except in
-%% compliance with the License. You should have received a copy of the
-%% Erlang Public License along with this software. If not, it can be
-%% retrieved online at http://www.erlang.org/.
+%% Licensed under the Apache License, Version 2.0 (the "License");
+%% you may not use this file except in compliance with the License.
+%% You may obtain a copy of the License at
 %%
-%% Software distributed under the License is distributed on an "AS IS"
-%% basis, WITHOUT WARRANTY OF ANY KIND, either express or implied. See
-%% the License for the specific language governing rights and limitations
-%% under the License.
+%%     http://www.apache.org/licenses/LICENSE-2.0
+%%
+%% Unless required by applicable law or agreed to in writing, software
+%% distributed under the License is distributed on an "AS IS" BASIS,
+%% WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+%% See the License for the specific language governing permissions and
+%% limitations under the License.
 %%
 %% %CopyrightEnd%
 %%
@@ -20,14 +21,13 @@
 -module(httpd_acceptor).
 
 -include("httpd.hrl").
--include("httpd_internal.hrl").
--include("inets_internal.hrl").
+-include_lib("kernel/include/logger.hrl").
 
 %% Internal application API
--export([start_link/5, start_link/6]).
+-export([start_link/7, start_link/8]).
 
 %% Other exports (for spawn's etc.)
--export([acceptor_init/6, acceptor_init/7, acceptor_loop/5]).
+-export([acceptor_init/8, acceptor_init/9, acceptor_loop/8]).
 
 %%
 %% External API
@@ -35,135 +35,114 @@
 
 %% start_link
 
-start_link(Manager, SocketType, Addr, Port, ConfigDb, AcceptTimeout) ->
-    ?hdrd("start link", 
-	  [{manager, Manager}, 
-	   {socket_type, SocketType}, 
-	   {address, Addr}, 
-	   {port, Port}, 
-	   {timeout, AcceptTimeout}]),
-    Args = [self(), Manager, SocketType, Addr, Port, ConfigDb, AcceptTimeout],
+start_link(Manager, SocketType, Addr, Port, IpFamily, ConfigDb, AcceptTimeout) ->
+    Args = [self(), Manager, SocketType, Addr, Port, IpFamily, ConfigDb, AcceptTimeout],
     proc_lib:start_link(?MODULE, acceptor_init, Args).
 
-start_link(Manager, SocketType, ListenSocket, ConfigDb, AcceptTimeout) ->
-    ?hdrd("start link", 
-	  [{manager, Manager}, 
-	   {socket_type, SocketType}, 
-	   {listen_socket, ListenSocket}, 
-	   {timeout, AcceptTimeout}]),
-    Args = [self(), Manager, SocketType, ListenSocket, 
+start_link(Manager, SocketType, Addr, Port, ListenSocket, IpFamily, ConfigDb, AcceptTimeout) ->
+    Args = [self(), Manager, SocketType, Addr, Port, ListenSocket, IpFamily, 
 	    ConfigDb, AcceptTimeout],
     proc_lib:start_link(?MODULE, acceptor_init, Args).
 
-acceptor_init(Parent, Manager, SocketType, {ListenOwner, ListenSocket}, 
+acceptor_init(Parent, Manager, SocketType, Addr, Port, {ListenOwner, ListenSocket}, IpFamily,
 	      ConfigDb, AcceptTimeout) ->
-    ?hdrd("acceptor init", 
-	  [{parent, Parent}, 
-	   {manager, Manager}, 
-	   {socket_type, SocketType}, 
-	   {listen_owner, ListenOwner}, 
-	   {listen_socket, ListenSocket}, 
-	   {timeout, AcceptTimeout}]),
     link(ListenOwner),
     proc_lib:init_ack(Parent, {ok, self()}),
-    acceptor_loop(Manager, SocketType, ListenSocket, ConfigDb, AcceptTimeout).
+    acceptor_loop(Manager, SocketType, Addr, Port,
+		  ListenSocket, IpFamily, ConfigDb, AcceptTimeout).
 
-acceptor_init(Parent, Manager, SocketType, Addr, Port, 
+acceptor_init(Parent, Manager, SocketType, Addr, Port, IpFamily, 
 	      ConfigDb, AcceptTimeout) ->
-    ?hdrd("acceptor init", 
-	  [{parent, Parent}, 
-	   {manager, Manager}, 
-	   {socket_type, SocketType}, 
-	   {address, Addr}, 
-	   {port, Port}, 
-	   {timeout, AcceptTimeout}]),
-    case (catch do_init(SocketType, Addr, Port)) of
+    %% ?hdrd("acceptor init", 
+    %% 	  [{parent, Parent}, 
+    %% 	   {manager, Manager}, 
+    %% 	   {socket_type, SocketType}, 
+    %% 	   {address, Addr}, 
+    %% 	   {port, Port}, 
+    %% 	   {timeout, AcceptTimeout}]),
+    case (catch do_init(SocketType, Addr, Port, IpFamily)) of
 	{ok, ListenSocket} ->
 	    proc_lib:init_ack(Parent, {ok, self()}),
-	    acceptor_loop(Manager, SocketType, 
-			  ListenSocket, ConfigDb, AcceptTimeout);
+	    acceptor_loop(Manager, SocketType, Addr, Port, 
+			  ListenSocket, IpFamily,ConfigDb, AcceptTimeout);
 	Error ->
 	    proc_lib:init_ack(Parent, Error),
 	    error
     end.
    
-do_init(SocketType, Addr, Port) ->
-    ?hdrt("do init", []),
+do_init(SocketType, Addr, Port, IpFamily) ->
+    %% ?hdrt("do init", []),
     do_socket_start(SocketType),
-    ListenSocket = do_socket_listen(SocketType, Addr, Port),
+    ListenSocket = do_socket_listen(SocketType, Addr, Port, IpFamily),
     {ok, ListenSocket}.
 
 
 do_socket_start(SocketType) ->
-    ?hdrt("do socket start", []),
+    %% ?hdrt("do socket start", []),
     case http_transport:start(SocketType) of
 	ok ->
 	    ok;
 	{error, Reason} ->
-	    ?hdrv("failed starting transport", [{reason, Reason}]),
+	    %% ?hdrv("failed starting transport", [{reason, Reason}]),
 	    throw({error, {socket_start_failed, Reason}})
     end.
 
 
-do_socket_listen(SocketType, Addr, Port) ->
-    ?hdrt("do socket listen", []),
-    case http_transport:listen(SocketType, Addr, Port) of
+do_socket_listen(SocketType, Addr, Port, IpFamily) ->
+    %% ?hdrt("do socket listen", []),
+    case http_transport:listen(SocketType, Addr, Port, IpFamily) of
 	{ok, ListenSocket} ->
 	    ListenSocket;
 	{error, Reason} ->
-	    ?hdrv("listen failed", [{reason,      Reason}, 
-				    {socket_type, SocketType},
-				    {addr,        Addr},
-				    {port,        Port}]),
+	    %% ?hdrv("listen failed", [{reason,      Reason}, 
+	    %% 			    {socket_type, SocketType},
+	    %% 			    {addr,        Addr},
+	    %% 			    {port,        Port}]),
 	    throw({error, {listen, Reason}})
     end.
 
 
 %% acceptor 
 
-acceptor_loop(Manager, SocketType, ListenSocket, ConfigDb, AcceptTimeout) ->
-    ?hdrd("awaiting accept", 
-	  [{manager, Manager}, 
-	   {socket_type, SocketType}, 
-	   {listen_socket, ListenSocket}, 
-	   {timeout, AcceptTimeout}]),
+acceptor_loop(Manager, SocketType, Addr, Port, ListenSocket, IpFamily, ConfigDb, AcceptTimeout) ->
+    %% ?hdrd("awaiting accept", 
+    %% 	  [{manager, Manager}, 
+    %% 	   {socket_type, SocketType}, 
+    %% 	   {listen_socket, ListenSocket}, 
+    %% 	   {timeout, AcceptTimeout}]),
     case (catch http_transport:accept(SocketType, ListenSocket, 50000)) of
 	{ok, Socket} ->
-	    ?hdrv("accepted", [{socket, Socket}]),
-	    handle_connection(Manager, ConfigDb, AcceptTimeout, 
+	    handle_connection(Addr, Port, Manager, ConfigDb, AcceptTimeout, 
 			      SocketType, Socket),
-	    ?MODULE:acceptor_loop(Manager, SocketType, 
-				  ListenSocket, ConfigDb,AcceptTimeout);
+	    ?MODULE:acceptor_loop(Manager, SocketType,  Addr, Port,
+				  ListenSocket, IpFamily, ConfigDb,AcceptTimeout);
 	{error, Reason} ->
-	    ?hdri("accept failed", [{reason, Reason}]),
-	    handle_error(Reason, ConfigDb),
-	    ?MODULE:acceptor_loop(Manager, SocketType, ListenSocket, 
-				  ConfigDb, AcceptTimeout);
+	    handle_error(Reason, ConfigDb, ?LOCATION),
+	    ?MODULE:acceptor_loop(Manager, SocketType, Addr, Port, ListenSocket, 
+				  IpFamily, ConfigDb, AcceptTimeout);
 	{'EXIT', Reason} ->
-	    ?hdri("accept exited", [{reason, Reason}]),
-	    ReasonString = 
-		lists:flatten(io_lib:format("Accept exit: ~p", [Reason])),
-	    accept_failed(ConfigDb, ReasonString)
+            accept_failed(ConfigDb, [{accept_failed, Reason}], ?LOCATION)
     end.
 
 
-handle_connection(Manager, ConfigDb, AcceptTimeout, SocketType, Socket) ->
-    {ok, Pid} = httpd_request_handler:start(Manager, ConfigDb, AcceptTimeout),
+handle_connection(Address, Port,  Manager, ConfigDb, AcceptTimeout, SocketType, Socket) ->
+    Sup = httpd_connection_sup:connection_sup(Address, Port),
+    {ok, Pid} = httpd_connection_sup:start_child(Sup, [Manager, ConfigDb, AcceptTimeout]),
     http_transport:controlling_process(SocketType, Socket, Pid),
     httpd_request_handler:socket_ownership_transfered(Pid, SocketType, Socket).
 
-handle_error(timeout, _) ->
+handle_error(timeout, _,_) ->
     ok;
 
-handle_error({enfile, _}, _) ->
+handle_error({enfile, _}, _, _) ->
     %% Out of sockets...
     sleep(200);
 
-handle_error(emfile, _) ->
+handle_error(emfile, _, _) ->
     %% Too many open files -> Out of sockets...
     sleep(200);
 
-handle_error(closed, _) ->
+handle_error(closed, _, _) ->
     error_logger:info_report("The httpd accept socket was closed by " 
 			     "a third party. "
 			     "This will not have an impact on inets "
@@ -177,33 +156,30 @@ handle_error(closed, _) ->
 %% and is not a problem for the server, so we want
 %% to terminate normal so that we can restart without any 
 %% error messages.
-handle_error(econnreset,_) ->
+handle_error(econnreset,_,_) ->
     exit(normal);
 
-handle_error(econnaborted, _) ->
+handle_error(econnaborted, _,_) ->
     ok;
 
-handle_error(esslaccept, _) ->
+handle_error(esslaccept, _, _) ->
     %% The user has selected to cancel the installation of 
     %% the certifikate, This is not a real error, so we do 
     %% not write an error message.
     ok;
 
-handle_error(Reason, ConfigDb) ->
-    String = lists:flatten(io_lib:format("Accept error: ~p", [Reason])),
-    accept_failed(ConfigDb, String).
+handle_error(Reason, ConfigDb, Location) ->
+    accept_failed(ConfigDb, {accept_failed, Reason}, Location).
 
 
 -spec accept_failed(ConfigDB     :: term(), 
-		    ReasonString :: string()) -> no_return(). 
+		    ReasonString :: string(), map()) -> no_return(). 
 
-accept_failed(ConfigDb, String) ->
-    error_logger:error_report(String),
-    InitData = #init_data{peername =  {0, "unknown"}},
-    Info = #mod{config_db = ConfigDb, init_data = InitData},
-    mod_log:error_log(Info, String),
-    mod_disk_log:error_log(Info, String),
-    exit({accept_failed, String}).    
+accept_failed(ConfigDb, Reason, Location) ->
+    InitData = #init_data{peername =  {0, "unknown"}, sockname = {0, "unknown"}},
+    ModData = #mod{config_db = ConfigDb, init_data = InitData},
+    httpd_util:error_log(ConfigDb, httpd_logger:error_report('TCP', Reason, ModData, Location)),
+    exit({accept_failed, Reason}).    
 
 sleep(T) -> receive after T -> ok end.
 

@@ -1,18 +1,19 @@
 %%
 %% %CopyrightBegin%
 %% 
-%% Copyright Ericsson AB 2003-2010. All Rights Reserved.
+%% Copyright Ericsson AB 2003-2019. All Rights Reserved.
 %% 
-%% The contents of this file are subject to the Erlang Public License,
-%% Version 1.1, (the "License"); you may not use this file except in
-%% compliance with the License. You should have received a copy of the
-%% Erlang Public License along with this software. If not, it can be
-%% retrieved online at http://www.erlang.org/.
-%% 
-%% Software distributed under the License is distributed on an "AS IS"
-%% basis, WITHOUT WARRANTY OF ANY KIND, either express or implied. See
-%% the License for the specific language governing rights and limitations
-%% under the License.
+%% Licensed under the Apache License, Version 2.0 (the "License");
+%% you may not use this file except in compliance with the License.
+%% You may obtain a copy of the License at
+%%
+%%     http://www.apache.org/licenses/LICENSE-2.0
+%%
+%% Unless required by applicable law or agreed to in writing, software
+%% distributed under the License is distributed on an "AS IS" BASIS,
+%% WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+%% See the License for the specific language governing permissions and
+%% limitations under the License.
 %% 
 %% %CopyrightEnd%
 %%
@@ -2064,22 +2065,11 @@ await_completion(Ids) ->
 	    ?ERROR({failed, Reply})
     end.
 
-%% await_completion(Ids, Timeout) ->
-%%     case megaco_test_generator_lib:await_completion(Ids, Timeout) of
-%% 	{ok, Reply} ->
-%% 	    d("OK => Reply: ~n~p", [Reply]),
-%% 	    ok;
-%% 	{error, Reply} ->
-%% 	    d("ERROR => Reply: ~n~p", [Reply]),
-%% 	    ?ERROR({failed, Reply})
-%%     end.
 
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 sleep(X) -> receive after X -> ok end.
-
-%% error_msg(F,A) -> error_logger:error_msg(F ++ "~n",A).
 
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -2088,49 +2078,30 @@ i(F) ->
     i(F, []).
 
 i(F, A) ->
-    print(info, get(verbosity), now(), get(tc), "INF", F, A).
+    print(info, get(verbosity), get(tc), "INF", F, A).
 
 
 d(F) ->
     d(F, []).
 
 d(F, A) ->
-    print(debug, get(verbosity), now(), get(tc), "DBG", F, A).
+    print(debug, get(verbosity), get(tc), "DBG", F, A).
 
 
 printable(_, debug)   -> true;
 printable(info, info) -> true;
 printable(_,_)        -> false.
 
-print(Severity, Verbosity, Ts, Tc, P, F, A) ->
-    print(printable(Severity,Verbosity), Ts, Tc, P, F, A).
+print(Severity, Verbosity, Tc, P, F, A) ->
+    print(printable(Severity,Verbosity), Tc, P, F, A).
 
-print(true, Ts, Tc, P, F, A) ->
+print(true, Tc, P, F, A) ->
     io:format("*** [~s] ~s ~p ~s:~w ***"
 	      "~n   " ++ F ++ "~n", 
-	      [format_timestamp(Ts), P, self(), get(sname), Tc | A]);
-print(_, _, _, _, _, _) ->
+	      [?FTS(), P, self(), get(sname), Tc | A]);
+print(_, _, _, _, _) ->
     ok.
-
-%% print(F, A) ->
-%%     io:format("*** [~s] ***"
-%% 	      "~n   " ++ F ++ "~n", 
-%% 	      [format_timestamp(now()) | A]).
-
-format_timestamp(Now) -> megaco:format_timestamp(Now).
 
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-
-%% random_init() ->
-%%     {A,B,C} = now(),
-%%     random:seed(A,B,C).
-
-%% random() ->
-%%     10 * random:uniform(50).
-
-%% apply_load_timer() ->
-%%     erlang:send_after(random(), self(), apply_load_timeout).
-
-
 

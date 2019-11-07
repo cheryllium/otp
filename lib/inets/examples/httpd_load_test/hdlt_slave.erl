@@ -1,18 +1,19 @@
 %%
 %% %CopyrightBegin%
 %%
-%% Copyright Ericsson AB 2010. All Rights Reserved.
+%% Copyright Ericsson AB 2010-2016. All Rights Reserved.
 %%
-%% The contents of this file are subject to the Erlang Public License,
-%% Version 1.1, (the "License"); you may not use this file except in
-%% compliance with the License. You should have received a copy of the
-%% Erlang Public License along with this software. If not, it can be
-%% retrieved online at http://www.erlang.org/.
+%% Licensed under the Apache License, Version 2.0 (the "License");
+%% you may not use this file except in compliance with the License.
+%% You may obtain a copy of the License at
 %%
-%% Software distributed under the License is distributed on an "AS IS"
-%% basis, WITHOUT WARRANTY OF ANY KIND, either express or implied. See
-%% the License for the specific language governing rights and limitations
-%% under the License.
+%%     http://www.apache.org/licenses/LICENSE-2.0
+%%
+%% Unless required by applicable law or agreed to in writing, software
+%% distributed under the License is distributed on an "AS IS" BASIS,
+%% WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+%% See the License for the specific language governing permissions and
+%% limitations under the License.
 %%
 %% %CopyrightEnd%
 %%
@@ -43,18 +44,17 @@
 %% this to work is that the 'erl' program can be found in PATH.
 %%
 %% If the master and slave are on different hosts, start/N uses
-%% the 'rsh' program to spawn an Erlang node on the other host.
+%% the 'ssh' program to spawn an Erlang node on the other host.
 %% Alternative, if the master was started as
 %% 'erl -sname xxx -rsh my_rsh...', then 'my_rsh' will be used instead
-%% of 'rsh' (this is useful for systems where the rsh program is named
-%% 'remsh').
+%% of 'ssh' (this is useful for systems still using rsh or remsh).
 %%
 %% For this to work, the following conditions must be fulfilled:
 %%
-%% 1. There must be an Rsh program on computer; if not an error
+%% 1. There must be an ssh program on computer; if not an error
 %%    is returned.
 %%
-%% 2. The hosts must be configured to allowed 'rsh' access without
+%% 2. The hosts must be configured to allow 'ssh' access without
 %%    prompts for password.
 %%
 %% The slave node will have its filer and user server redirected
@@ -180,7 +180,7 @@ ssh_slave_start(Host, ErlCmd) ->
  	    ?DEBUG("ssh_exec_erl -> done", []), 
 	    {ok, Connection, Channel};
 	Error3 ->
- 	    ?LOG("failed exec comand: ~p", [Error3]),
+	    ?LOG("failed exec command: ~p", [Error3]),
 	    throw({error, {ssh_exec_failed, Error3}})
     end.
 
@@ -243,7 +243,7 @@ register_unique_name(Number) ->
 
 %% Makes up the command to start the nodes.
 %% If the node should run on the local host, there is
-%% no need to use rsh.
+%% no need to use ssh.
 
 mk_cmd(Host, Name, Paths, Args, Waiter, Prog) ->
     PaPaths = [[" -pa ", Path] || Path <- Paths], 

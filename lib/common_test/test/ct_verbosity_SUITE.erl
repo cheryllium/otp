@@ -1,18 +1,19 @@
 %%
 %% %CopyrightBegin%
 %%
-%% Copyright Ericsson AB 2009-2012. All Rights Reserved.
+%% Copyright Ericsson AB 2009-2017. All Rights Reserved.
 %%
-%% The contents of this file are subject to the Erlang Public License,
-%% Version 1.1, (the "License"); you may not use this file except in
-%% compliance with the License. You should have received a copy of the
-%% Erlang Public License along with this software. If not, it can be
-%% retrieved online at http://www.erlang.org/.
+%% Licensed under the Apache License, Version 2.0 (the "License");
+%% you may not use this file except in compliance with the License.
+%% You may obtain a copy of the License at
 %%
-%% Software distributed under the License is distributed on an "AS IS"
-%% basis, WITHOUT WARRANTY OF ANY KIND, either express or implied. See
-%% the License for the specific language governing rights and limitations
-%% under the License.
+%%     http://www.apache.org/licenses/LICENSE-2.0
+%%
+%% Unless required by applicable law or agreed to in writing, software
+%% distributed under the License is distributed on an "AS IS" BASIS,
+%% WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+%% See the License for the specific language governing permissions and
+%% limitations under the License.
 %%
 %% %CopyrightEnd%
 %%
@@ -44,19 +45,33 @@
 %% there will be clashes with logging processes etc).
 %%--------------------------------------------------------------------
 init_per_suite(Config) ->
-    Config1 = ct_test_support:init_per_suite(Config),
-    Config1.
+    DataDir = ?config(data_dir, Config),
+    EvH = filename:join(DataDir,"simple_evh.erl"),
+    ct:pal("Compiling ~ts: ~p", [EvH,compile:file(EvH,[{outdir,DataDir},
+                                                       debug_info])]),
+    ct_test_support:init_per_suite([{path_dirs,[DataDir]} | Config]).
 
 end_per_suite(Config) ->
     ct_test_support:end_per_suite(Config).
 
+init_per_testcase(no_crashing, Config) ->
+    Opts = ct_test_support:start_slave(ctX, Config, 50),
+    XNode = proplists:get_value(ct_node, Opts),
+    ct:pal("Node ~p started!", [XNode]),
+    [{xnode,XNode} | Config];
 init_per_testcase(TestCase, Config) ->
     ct_test_support:init_per_testcase(TestCase, Config).
 
+end_per_testcase(no_crashing, Config) ->
+    XNode = proplists:get_value(xnode, Config),
+    ct_test_support:slave_stop(XNode),
+    ct:pal("Node ~p stopped!", [XNode]),
+    ok;
 end_per_testcase(TestCase, Config) ->
     ct_test_support:end_per_testcase(TestCase, Config).
 
-suite() -> [{ct_hooks,[ts_install_cth]}].
+suite() -> [{timetrap,{minutes,2}},
+	    {ct_hooks,[ts_install_cth]}].
 
 all() -> 
     [
@@ -67,7 +82,9 @@ all() ->
      change_default,
      combine_categories,
      testspec_only,
-     merge_with_testspec
+     merge_with_testspec,
+     possible_deadlock,
+     no_crashing
     ].
 
 %%--------------------------------------------------------------------
@@ -173,6 +190,30 @@ merge_with_testspec(Config) ->
     ok = execute(TC, Opts, ERPid, Config).
 
 %%%-----------------------------------------------------------------
+%%% 
+possible_deadlock(Config) ->
+    TC = possible_deadlock,
+    DataDir = ?config(data_dir, Config),
+    Suite = filename:join(DataDir, "io_test_SUITE"),
+    {Opts,ERPid} = setup([{suite,Suite},{label,TC},
+			  {event_handler,[simple_evh]}], Config),
+    ok = execute(TC, Opts, ERPid, Config).
+    
+
+%%%-----------------------------------------------------------------
+%%%
+no_crashing(Config) ->
+    XNode = proplists:get_value(xnode, Config),
+    ok = rpc:call(XNode, ct, print, ["hello",[]]),
+    ok = rpc:call(XNode, ct, pal, ["hello",[]]),
+    ok = rpc:call(XNode, ct, log, ["hello",[]]),
+    Data = io_lib:format("hello", []),
+    {badrpc,{'EXIT',{noproc,_}}} =
+	(catch rpc:call(XNode, test_server_io, print_unexpected, [Data])),
+    ok.	
+
+
+%%%-----------------------------------------------------------------
 %%% HELP FUNCTIONS
 %%%-----------------------------------------------------------------
 
@@ -180,7 +221,14 @@ setup(Test, Config) ->
     Opts0 = ct_test_support:get_opts(Config),
     Level = ?config(trace_level, Config),
     EvHArgs = [{cbm,ct_test_support},{trace_level,Level}],
-    Opts = Opts0 ++ [{event_handler,{?eh,EvHArgs}}|Test],
+    Opts =
+	case proplists:get_value(event_handler, Test) of
+	    undefined ->
+		Opts0 ++ [{event_handler,{?eh,EvHArgs}} | Test];
+	    EvHs ->
+		Opts0 ++ [{event_handler,{[?eh|EvHs],EvHArgs}} |
+			  proplists:delete(event_handler, Test)]
+	end,
     ERPid = ct_test_support:start_event_receiver(Config),
     {Opts,ERPid}.
 

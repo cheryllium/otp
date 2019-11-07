@@ -1,18 +1,19 @@
 /*
  * %CopyrightBegin%
  * 
- * Copyright Ericsson AB 1996-2012. All Rights Reserved.
+ * Copyright Ericsson AB 1996-2018. All Rights Reserved.
  * 
- * The contents of this file are subject to the Erlang Public License,
- * Version 1.1, (the "License"); you may not use this file except in
- * compliance with the License. You should have received a copy of the
- * Erlang Public License along with this software. If not, it can be
- * retrieved online at http://www.erlang.org/.
- * 
- * Software distributed under the License is distributed on an "AS IS"
- * basis, WITHOUT WARRANTY OF ANY KIND, either express or implied. See
- * the License for the specific language governing rights and limitations
- * under the License.
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  * 
  * %CopyrightEnd%
  */
@@ -47,13 +48,10 @@
  *
  *  HEART_BEATING
  *
- *  This program expects a heart beat messages. If it does not receive a 
- *  heart beat message from Erlang within heart_beat_timeout seconds, it 
- *  reboots the system. The variable heart_beat_timeout is exported (so
- *  that it can be set from the shell in VxWorks, as is the variable
- *  heart_beat_report_delay). When using Solaris, the system is rebooted
- *  by executing the command stored in the environment variable
- *  HEART_COMMAND.
+ *  This program expects a heart beat message. If it does not receive a
+ *  heart beat message from Erlang within heart_beat_timeout seconds, it
+ *  reboots the system. The system is rebooted by executing the command
+ *  stored in the environment variable HEART_COMMAND.
  *
  *  BLOCKING DESCRIPTORS
  *
@@ -66,8 +64,7 @@
  *  input and output file descriptors (0 and 1). These descriptors
  *  (and the standard error descriptor 2) must NOT be closed
  *  explicitely by this program at termination (in UNIX it is
- *  taken care of by the operating system itself; in VxWorks
- *  it is taken care of by the spawn driver part of the Emulator).
+ *  taken care of by the operating system itself).
  *
  *  END OF FILE
  *
@@ -75,12 +72,6 @@
  *  that there is no process at the other end of the connection
  *  having the connection open for writing (end-of-file).
  *
- *  HARDWARE WATCHDOG
- *
- *  When used with VxWorks(with CPU40), the hardware
- *  watchdog is enabled, making sure that the system reboots
- *  even if the heart port program malfunctions or the system
- *  is completely overloaded.
  */
 
 #ifdef HAVE_CONFIG_H
@@ -92,9 +83,6 @@
 #include <io.h>
 #include <fcntl.h>
 #include <process.h>
-#endif
-#ifdef VXWORKS
-#include "sys.h"
 #endif
 
 /*
@@ -113,25 +101,13 @@
 #include <time.h>
 #include <errno.h>
 
-#ifdef VXWORKS
-#  include <vxWorks.h>
-#  include <ioLib.h>
-#  include <selectLib.h>
-#  include <netinet/in.h>
-#  include <rebootLib.h>
-#  include <sysLib.h> 
-#  include <taskLib.h>
-#  include <wdLib.h>
-#  include <taskHookLib.h>
-#  include <selectLib.h>
-#endif
-#if !defined(__WIN32__) && !defined(VXWORKS)
+#if !defined(__WIN32__)
 #  include <sys/types.h>
 #  include <netinet/in.h>
 #  include <sys/time.h>
 #  include <unistd.h>
 #  include <signal.h>
-#  if defined(CORRECT_USING_TIMES)
+#  if defined(OS_MONOTONIC_TIME_USING_TIMES)
 #    include <sys/times.h>
 #    include <limits.h>
 #  endif
@@ -139,11 +115,14 @@
 
 #define HEART_COMMAND_ENV          "HEART_COMMAND"
 #define ERL_CRASH_DUMP_SECONDS_ENV "ERL_CRASH_DUMP_SECONDS"
+#define HEART_KILL_SIGNAL          "HEART_KILL_SIGNAL"
+#define HEART_NO_KILL              "HEART_NO_KILL"
 
-#define MSG_HDR_SIZE        2
-#define MSG_HDR_PLUS_OP_SIZE 3
-#define MSG_BODY_SIZE      2048
-#define MSG_TOTAL_SIZE     2050
+
+#define MSG_HDR_SIZE         (2)
+#define MSG_HDR_PLUS_OP_SIZE (3)
+#define MSG_BODY_SIZE        (2048)
+#define MSG_TOTAL_SIZE       (2050)
 
 unsigned char cmd[MSG_BODY_SIZE];
 
@@ -167,26 +146,16 @@ struct msg {
 /*  Maybe interesting to change */
 
 /* Times in seconds */
-#define  HEART_BEAT_BOOT_DELAY       60  /* 1 minute */
 #define  SELECT_TIMEOUT               5  /* Every 5 seconds we reset the
 					    watchdog timer */
 
 /* heart_beat_timeout is the maximum gap in seconds between two
-   consecutive heart beat messages from Erlang, and HEART_BEAT_BOOT_DELAY
-   is the the extra delay that wd_keeper allows for, to give heart a
-   chance to reboot in the "normal" way before the hardware watchdog
-   enters the scene. heart_beat_report_delay is the time allowed for reporting
-   before rebooting under VxWorks. */
+   consecutive heart beat messages from Erlang. */
 
 int heart_beat_timeout = 60;
-int heart_beat_report_delay = 30;
-int heart_beat_boot_delay = HEART_BEAT_BOOT_DELAY;
 /* All current platforms have a process identifier that
    fits in an unsigned long and where 0 is an impossible or invalid value */
 unsigned long heart_beat_kill_pid = 0;
-
-#define VW_WD_TIMEOUT (heart_beat_timeout+heart_beat_report_delay+heart_beat_boot_delay)
-#define SOL_WD_TIMEOUT (heart_beat_timeout+heart_beat_boot_delay)
 
 /* reasons for reboot */
 #define  R_TIMEOUT          (1)
@@ -223,7 +192,6 @@ static BOOL do_shutdown(int);
 static void print_last_error(void);
 static HANDLE start_reader_thread(void);
 static DWORD WINAPI reader(LPVOID);
-static int test_win95(void);
 #define read _read
 #define write _write
 #endif
@@ -261,24 +229,39 @@ get_env(char *key)
 {
 #ifdef __WIN32__
     DWORD size = 32;
-    char *value = NULL;
+    char  *value=NULL;
+    wchar_t *wcvalue = NULL;
+    wchar_t wckey[256];
+    int len; 
+
+    MultiByteToWideChar(CP_UTF8, 0, key, -1, wckey, 256);
+    
     while (1) {
 	DWORD nsz;
-	if (value)
-	    free(value);
-	value = malloc(size);
-	if (!value) {
+	if (wcvalue)
+	    free(wcvalue);
+	wcvalue = malloc(size*sizeof(wchar_t));
+	if (!wcvalue) {
 	    print_error("Failed to allocate memory. Terminating...");
 	    exit(1);
 	}
 	SetLastError(0);
-	nsz = GetEnvironmentVariable((LPCTSTR) key, (LPTSTR) value, size);
+	nsz = GetEnvironmentVariableW(wckey, wcvalue, size);
 	if (nsz == 0 && GetLastError() == ERROR_ENVVAR_NOT_FOUND) {
-	    free(value);
+	    free(wcvalue);
 	    return NULL;
 	}
-	if (nsz <= size)
+	if (nsz <= size) {
+	    len = WideCharToMultiByte(CP_UTF8, 0, wcvalue, -1, NULL, 0, NULL, NULL);
+	    value = malloc(len*sizeof(char));
+	    if (!value) {
+		print_error("Failed to allocate memory. Terminating...");
+		exit(1);
+	    }
+	    WideCharToMultiByte(CP_UTF8, 0, wcvalue, -1, value, len, NULL, NULL);
+	    free(wcvalue);
 	    return value;
+	}
 	size = nsz;
     }
 #else
@@ -301,7 +284,6 @@ free_env_val(char *value)
 static void get_arguments(int argc, char** argv) {
     int i = 1;
     int h;
-    int w;
     unsigned long p;
 
     while (i < argc) {
@@ -314,15 +296,6 @@ static void get_arguments(int argc, char** argv) {
 			if ((h > 10) && (h <= 65535)) {
 			    heart_beat_timeout = h;
 			    fprintf(stderr,"heart_beat_timeout = %d\n",h);
-			    i++;
-			}
-		break;
-	    case 'w':
-		if (strcmp(argv[i], "-wt") == 0)
-		    if (sscanf(argv[i+1],"%i",&w) ==1)
-			if ((w > 10) && (w <= 65535)) {
-			    heart_beat_boot_delay = w;
-			    fprintf(stderr,"heart_beat_boot_delay = %d\n",w);
 			    i++;
 			}
 		break;
@@ -351,7 +324,7 @@ static void get_arguments(int argc, char** argv) {
 	}
 	i++;
     }
-    debugf("arguments -ht %d -wt %d -pid %lu\n",h,w,p);
+    debugf("arguments -ht %d -pid %lu\n",h,p);
 }
 
 int main(int argc, char **argv) {
@@ -478,10 +451,6 @@ message_loop(erlin_fd, erlout_fd)
 			switch (mp->op) {
 			case HEART_BEAT:
 				timestamp(&last_received);
-#ifdef USE_WATCHDOG
-				/* reset the hardware watchdog timer */
-				wd_reset();
-#endif
 				break;
 			case SHUT_DOWN:
 				return R_SHUT_DOWN;
@@ -531,9 +500,15 @@ message_loop(erlin_fd, erlout_fd)
 
 #if defined(__WIN32__)
 static void 
-kill_old_erlang(void){
+kill_old_erlang(int reason){
     HANDLE erlh;
     DWORD exit_code;
+    char* envvar = NULL;
+
+    envvar = get_env(HEART_NO_KILL);
+    if (envvar && strcmp(envvar, "TRUE") == 0)
+      return;
+
     if(heart_beat_kill_pid != 0){
 	if((erlh = OpenProcess(PROCESS_TERMINATE | 
 			       SYNCHRONIZE | 
@@ -559,19 +534,42 @@ kill_old_erlang(void){
 	CloseHandle(erlh);
     }
 }
-#elif !defined(VXWORKS)
-/* Unix eh? */
+#else
 static void 
-kill_old_erlang(void){
+kill_old_erlang(int reason)
+{
     pid_t pid;
-    int i;
-    int res;
+    int i, res;
+    int sig = SIGKILL;
+    char *envvar = NULL;
+
+    envvar = get_env(HEART_NO_KILL);
+    if (envvar && strcmp(envvar, "TRUE") == 0)
+      return;
+
     if(heart_beat_kill_pid != 0){
-	pid = (pid_t) heart_beat_kill_pid;
-	res = kill(pid,SIGKILL);
+        pid = (pid_t) heart_beat_kill_pid;
+        if (reason == R_CLOSED) {
+            print_error("Wait 5 seconds for Erlang to terminate nicely");
+            for (i=0; i < 5; ++i) {
+                res = kill(pid, 0); /* check if alive */
+                if (res < 0 && errno == ESRCH)
+                    return;
+                sleep(1);
+            }
+            print_error("Erlang still alive, kill it");
+        }
+
+        envvar = get_env(HEART_KILL_SIGNAL);
+        if (envvar && strcmp(envvar, "SIGABRT") == 0) {
+            print_error("kill signal SIGABRT requested");
+            sig = SIGABRT;
+        }
+
+	res = kill(pid,sig);
 	for(i=0; i < 5 && res == 0; ++i){
 	    sleep(1);
-	    res = kill(pid,SIGKILL);
+	    res = kill(pid,sig);
 	}
 	if(errno != ESRCH){
 	    print_error("Unable to kill old process, "
@@ -579,7 +577,7 @@ kill_old_erlang(void){
 	}
     }
 }
-#endif /* Not on VxWorks */
+#endif
 
 #ifdef __WIN32__
 void win_system(char *command)
@@ -587,13 +585,22 @@ void win_system(char *command)
     char *comspec;
     char * cmdbuff;
     char * extra = " /C ";
+    wchar_t *wccmdbuff;
     char *env;
-    STARTUPINFO start;
+    STARTUPINFOW start;
     SECURITY_ATTRIBUTES attr;
     PROCESS_INFORMATION info;
+    int len;
 
-    if (!debug_on || test_win95()) {
-	system(command);
+    if (!debug_on) {
+	len = MultiByteToWideChar(CP_UTF8, 0, command, -1, NULL, 0);
+	wccmdbuff = malloc(len*sizeof(wchar_t));
+	if (!wccmdbuff) {
+	    print_error("Failed to allocate memory. Terminating...");
+	    exit(1);
+	}
+	MultiByteToWideChar(CP_UTF8, 0, command, -1, wccmdbuff, len);
+	_wsystem(wccmdbuff);
 	return;
     }
     comspec = env = get_env("COMSPEC");
@@ -625,20 +632,29 @@ void win_system(char *command)
 
     fflush(stderr);
 
-    if (!CreateProcess(NULL,
-		       cmdbuff,
-		       &attr,
-		       NULL,
-		       TRUE,
-		       0,
-		       NULL,
-		       NULL,
-		       &start,
-		       &info)) {
+    len = MultiByteToWideChar(CP_UTF8, 0, cmdbuff, -1, NULL, 0);
+    wccmdbuff = malloc(len*sizeof(wchar_t));
+    if (!wccmdbuff) {
+	print_error("Failed to allocate memory. Terminating...");
+	exit(1);
+    }
+    MultiByteToWideChar(CP_UTF8, 0, cmdbuff, -1, wccmdbuff, len);
+
+    if (!CreateProcessW(NULL,
+			wccmdbuff,
+			&attr,
+			NULL,
+			TRUE,
+			0,
+			NULL,
+			NULL,
+			&start,
+			&info)) {
 	debugf("Could not create process for the command %s.\r\n", cmdbuff);
     }
     WaitForSingleObject(info.hProcess,INFINITE);
     free(cmdbuff);
+    free(wccmdbuff);
 }
 #endif /* defined(__WIN32__) */
 
@@ -647,11 +663,6 @@ void win_system(char *command)
  */
 static void 
 do_terminate(int erlin_fd, int reason) {
-  /*
-    When we get here, we have HEART_BEAT_BOOT_DELAY secs to finish
-    (plus heart_beat_report_delay if under VxWorks), so we don't need
-    to call wd_reset().
-    */
   int ret = 0, tmo=0;
   char *tmo_env;
 
@@ -678,7 +689,7 @@ do_terminate(int erlin_fd, int reason) {
 	    if(!command)
 		print_error("Would reboot. Terminating.");
 	    else {
-		kill_old_erlang();
+		kill_old_erlang(reason);
 		/* High prio combined with system() works badly indeed... */
 		SetPriorityClass(GetCurrentProcess(), NORMAL_PRIORITY_CLASS);
 		win_system(command);
@@ -686,7 +697,7 @@ do_terminate(int erlin_fd, int reason) {
 	    }
 	    free_env_val(command);
 	} else {
-	    kill_old_erlang();
+	    kill_old_erlang(reason);
 	    /* High prio combined with system() works badly indeed... */
 	    SetPriorityClass(GetCurrentProcess(), NORMAL_PRIORITY_CLASS);
 	    win_system(&cmd[0]);
@@ -698,15 +709,13 @@ do_terminate(int erlin_fd, int reason) {
 	    if(!command)
 		print_error("Would reboot. Terminating.");
 	    else {
-		kill_old_erlang();
-		/* suppress gcc warning with 'if' */
+		kill_old_erlang(reason);
 		ret = system(command);
 		print_error("Executed \"%s\" -> %d. Terminating.",command, ret);
 	    }
 	    free_env_val(command);
 	} else {
-	    kill_old_erlang();
-	    /* suppress gcc warning with 'if' */
+	    kill_old_erlang(reason);
 	    ret = system((char*)&cmd[0]);
 	    print_error("Executed \"%s\" -> %d. Terminating.",cmd, ret);
 	}
@@ -828,11 +837,8 @@ write_message(fd, mp)
   int   fd;
   struct msg *mp;
 {
-  int   len;
-  char* tmp;
+  int len = ntohs(mp->len);
 
-  tmp = (char*) &(mp->len);
-  len = (*tmp * 256) + *(tmp+1); 
   if ((len == 0) || (len > MSG_BODY_SIZE)) {
     return MSG_HDR_SIZE;
   }				/* cc68k wants (char *) */
@@ -989,16 +995,6 @@ void print_last_error() {
 	LocalFree( lpMsgBuf );
 }
 
-static int test_win95(void)
-{
-    OSVERSIONINFO osinfo;
-    osinfo.dwOSVersionInfoSize=sizeof(OSVERSIONINFO);
-    GetVersionEx(&osinfo);
-    if (osinfo.dwPlatformId == VER_PLATFORM_WIN32_WINDOWS) 
-	return 1;
-    else
-	return 0;
-}
 
 static BOOL enable_privilege() {
 	HANDLE ProcessHandle;
@@ -1016,27 +1012,18 @@ static BOOL enable_privilege() {
 }
 
 static BOOL do_shutdown(int really_shutdown) {
-    if (test_win95()) {
-    	if (ExitWindowsEx(EWX_REBOOT,0)) {
-		return TRUE;
-	} else {
-		print_last_error();
-		return FALSE;
-	}
-    } else {
-	enable_privilege();
-	if (really_shutdown) {
-	    if (InitiateSystemShutdown(NULL,"shutdown by HEART",10,TRUE,TRUE))
-		return TRUE;
-	} else if (InitiateSystemShutdown(NULL,
-					  "shutdown by HEART\n"
-					  "will be interrupted",
-					  30,TRUE,TRUE)) {
-	    AbortSystemShutdown(NULL);
+    enable_privilege();
+    if (really_shutdown) {
+	if (InitiateSystemShutdown(NULL,"shutdown by HEART",10,TRUE,TRUE))
 	    return TRUE;
-	}
-	return FALSE;
+    } else if (InitiateSystemShutdown(NULL,
+				      "shutdown by HEART\n"
+				      "will be interrupted",
+				      30,TRUE,TRUE)) {
+	AbortSystemShutdown(NULL);
+	return TRUE;
     }
+    return FALSE;
 }
 
 DWORD WINAPI reader(LPVOID lpvParam) {
@@ -1094,62 +1081,9 @@ time_t timestamp(time_t *res)
     return r;
 }
 
-#elif defined(VXWORKS)
+#elif defined(OS_MONOTONIC_TIME_USING_GETHRTIME) || defined(OS_MONOTONIC_TIME_USING_CLOCK_GETTIME)
 
-static WDOG_ID watchdog_id;
-static volatile unsigned elapsed;
-static WIND_TCB *this_task;
-/* A simple variable is enough to lock the time update, as the
-   watchdog is run at interrupt level and never preempted. */
-static volatile int lock_time; 
-
-static void my_delete_hook(WIND_TCB *tcb) 
-{ 
-    if (tcb == this_task) {
-	wdDelete(watchdog_id);
-	watchdog_id = NULL;
-	taskDeleteHookDelete((FUNCPTR) &my_delete_hook);
-    }
-}
-
-static void my_wd_routine(int count)
-{
-    if (watchdog_id != NULL) {
-	++count;
-	if (!lock_time) {
-	    elapsed += count;
-	    count = 0;
-	}
-	wdStart(watchdog_id, sysClkRateGet(), 
-		(FUNCPTR) &my_wd_routine, count);
-    }
-}
-
-void init_timestamp(void)
-{
-    lock_time = 0;
-    elapsed = 0;
-    watchdog_id = wdCreate();
-    this_task = (WIND_TCB *) taskIdSelf();
-    taskDeleteHookAdd((FUNCPTR) &my_delete_hook);
-    wdStart(watchdog_id, sysClkRateGet(), 
-	    (FUNCPTR) &my_wd_routine, 0);
-}
-
-time_t timestamp(time_t *res)
-{
-    time_t r;
-    ++lock_time;
-    r = (time_t) elapsed;
-    --lock_time;
-    if (res != NULL)
-	*res = r;
-    return r;
-}
-   
-#elif defined(HAVE_GETHRTIME)  || defined(GETHRTIME_WITH_CLOCK_GETTIME)
-
-#if defined(GETHRTIME_WITH_CLOCK_GETTIME)
+#if defined(OS_MONOTONIC_TIME_USING_CLOCK_GETTIME)
 typedef long long SysHrTime;
 
 SysHrTime sys_gethrtime(void);
@@ -1158,7 +1092,7 @@ SysHrTime sys_gethrtime(void)
 {
     struct timespec ts;
     long long result;
-    if (clock_gettime(CLOCK_MONOTONIC,&ts) != 0) {
+    if (clock_gettime(MONOTONIC_CLOCK_ID,&ts) != 0) {
 	print_error("Fatal, could not get clock_monotonic value, terminating! "
 		    "errno = %d\n", errno);
 	exit(1);
@@ -1171,7 +1105,6 @@ SysHrTime sys_gethrtime(void)
 typedef hrtime_t SysHrTime;
 #define sys_gethrtime() gethrtime()
 #endif
-
 
 void init_timestamp(void)
 {
@@ -1186,7 +1119,7 @@ time_t timestamp(time_t *res)
     return r;
 }
 
-#elif defined(CORRECT_USING_TIMES)
+#elif defined(OS_MONOTONIC_TIME_USING_TIMES)
 
 #  ifdef NO_SYSCONF
 #    include <sys/param.h>

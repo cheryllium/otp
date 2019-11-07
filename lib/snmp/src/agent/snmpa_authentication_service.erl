@@ -1,30 +1,45 @@
 %%
 %% %CopyrightBegin%
 %% 
-%% Copyright Ericsson AB 2004-2011. All Rights Reserved.
+%% Copyright Ericsson AB 2004-2019. All Rights Reserved.
 %% 
-%% The contents of this file are subject to the Erlang Public License,
-%% Version 1.1, (the "License"); you may not use this file except in
-%% compliance with the License. You should have received a copy of the
-%% Erlang Public License along with this software. If not, it can be
-%% retrieved online at http://www.erlang.org/.
-%% 
-%% Software distributed under the License is distributed on an "AS IS"
-%% basis, WITHOUT WARRANTY OF ANY KIND, either express or implied. See
-%% the License for the specific language governing rights and limitations
-%% under the License.
+%% Licensed under the Apache License, Version 2.0 (the "License");
+%% you may not use this file except in compliance with the License.
+%% You may obtain a copy of the License at
+%%
+%%     http://www.apache.org/licenses/LICENSE-2.0
+%%
+%% Unless required by applicable law or agreed to in writing, software
+%% distributed under the License is distributed on an "AS IS" BASIS,
+%% WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+%% See the License for the specific language governing permissions and
+%% limitations under the License.
 %% 
 %% %CopyrightEnd%
 %%
 -module(snmpa_authentication_service).
 
--export([behaviour_info/1]).
- 
-behaviour_info(callbacks) ->
-    [{init_check_access, 2}];
-behaviour_info(_) ->
-    undefined.
- 
+-export_type([
+              acm_data/0
+             ]).
+
+-type acm_data() :: {community,
+                     SecModel  :: 0 | 1 | 2 | 3, % any | v1 | v2c | v3
+                     Community :: string(),
+                     %% Oids for either:
+                     %%      transportDomainUdpIpv4 | transportDomainUdpIpv6
+                     TDomain   :: snmp:oid(),
+                     TAddress  :: [non_neg_integer()]} |
+                    {v3,
+                     MsgID           :: integer(),
+                     SecModel        :: 0 | 1 | 2 | 3, % any | v1 | v2c | v3
+                     SecName         :: string(),
+                     %% noAuthNoPriv | authNoPriv | authPriv
+                     SecLevel        :: 1 | 2 | 3,
+                     ContextEngineID :: string(),
+                     ContextName     :: string(),
+                     SecData         :: term()}.
+
 
 %%-----------------------------------------------------------------
 %% init_check_access(Pdu, ACMData)
@@ -45,9 +60,7 @@ behaviour_info(_) ->
 %%        Variable        = snmpInBadCommunityNames |
 %%                          snmpInBadCommunityUses |
 %%                          snmpInASNParseErrs
-%%        Reason          = snmp_message_decoding |
-%%                          {bad_community_name, Address, Community}} |
-%%                          {invalid_access, Access, Op}
+%%        Reason          = {bad_community_name, Address, Community}}
 %%
 %% Purpose: Called once for each Pdu.  Returns a MibView
 %%          which is later used for each variable in the pdu.
@@ -56,3 +69,14 @@ behaviour_info(_) ->
 %%
 %% NOTE: This function is executed in the Master agents's context
 %%-----------------------------------------------------------------
+
+-callback init_check_access(Pdu, ACMData) ->
+    {ok, MibView, ContextName} |
+    {error, Reason} |
+    {discarded, Variable, Reason} when
+      Pdu         :: snmp:pdu(),
+      ACMData     :: acm_data(),
+      MibView     :: snmp_view_based_acm_mib:mibview(),
+      ContextName :: string(),
+      Reason      :: term(),
+      Variable    :: snmpInBadCommunityNames.

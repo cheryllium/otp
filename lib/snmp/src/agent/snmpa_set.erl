@@ -1,18 +1,19 @@
 %%
 %% %CopyrightBegin%
 %% 
-%% Copyright Ericsson AB 1996-2009. All Rights Reserved.
+%% Copyright Ericsson AB 1996-2016. All Rights Reserved.
 %% 
-%% The contents of this file are subject to the Erlang Public License,
-%% Version 1.1, (the "License"); you may not use this file except in
-%% compliance with the License. You should have received a copy of the
-%% Erlang Public License along with this software. If not, it can be
-%% retrieved online at http://www.erlang.org/.
-%% 
-%% Software distributed under the License is distributed on an "AS IS"
-%% basis, WITHOUT WARRANTY OF ANY KIND, either express or implied. See
-%% the License for the specific language governing rights and limitations
-%% under the License.
+%% Licensed under the Apache License, Version 2.0 (the "License");
+%% you may not use this file except in compliance with the License.
+%% You may obtain a copy of the License at
+%%
+%%     http://www.apache.org/licenses/LICENSE-2.0
+%%
+%% Unless required by applicable law or agreed to in writing, software
+%% distributed under the License is distributed on an "AS IS" BASIS,
+%% WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+%% See the License for the specific language governing permissions and
+%% limitations under the License.
 %% 
 %% %CopyrightEnd%
 %%
@@ -162,10 +163,14 @@ set_phase_two(MyVarbinds, SubagentVarbinds) ->
 	    [MyVarbinds, SubagentVarbinds]),
     case snmpa_set_lib:try_set(MyVarbinds) of
 	{noError, 0} ->
+            ?vtrace("set phase two: (local) varbinds set ok", []),
 	    set_phase_two_subagents(SubagentVarbinds);
-	{ErrorStatus, Index} ->
+	{ErrorStatus, ErrorIndex} ->
+            ?vlog("set phase two: (local) varbinds set failed"
+                  "~n   ErrorStatus: ~p" 
+                  "~n   ErrorIndex:  ~p", [ErrorStatus, ErrorIndex]),
 	    set_phase_two_undo_subagents(SubagentVarbinds),
-	    {ErrorStatus, Index}
+	    {ErrorStatus, ErrorIndex}
     end.
 
 %%-----------------------------------------------------------------
@@ -187,6 +192,7 @@ set_phase_two_subagents([{SubAgentPid, SAVbs} | SubagentVarbinds]) ->
     {_SAOids, Vbs} = sa_split(SAVbs),
     case catch snmpa_agent:subagent_set(SubAgentPid, [phase_two, set, Vbs]) of
 	{noError, 0} ->
+            ?vtrace("set phase two: subagent ~p varbinds set ok", [SubAgentPid]),
 	    set_phase_two_subagents(SubagentVarbinds);
 	{'EXIT', Reason} ->
 	    user_err("Lost contact with subagent (set)~n~w. Using genErr", 
@@ -194,10 +200,14 @@ set_phase_two_subagents([{SubAgentPid, SAVbs} | SubagentVarbinds]) ->
 	    set_phase_two_undo_subagents(SubagentVarbinds),
 	    {genErr, 0};
 	{ErrorStatus, ErrorIndex} ->
+            ?vlog("set phase two: subagent ~p varbinds set failed"
+                  "~n   ErrorStatus: ~p"
+                  "~n   ErrorIndex:  ~p", [SubAgentPid, ErrorStatus, ErrorIndex]),
 	    set_phase_two_undo_subagents(SubagentVarbinds),
 	    {ErrorStatus, ErrorIndex}
     end;
 set_phase_two_subagents([]) ->
+    ?vtrace("set phase two: subagent(s) set ok", []),
     {noError, 0}.
 
 %%-----------------------------------------------------------------

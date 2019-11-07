@@ -1,18 +1,19 @@
 #
 # %CopyrightBegin%
 #
-# Copyright Ericsson AB 1999-2012. All Rights Reserved.
+# Copyright Ericsson AB 1999-2018. All Rights Reserved.
 #
-# The contents of this file are subject to the Erlang Public License,
-# Version 1.1, (the "License"); you may not use this file except in
-# compliance with the License. You should have received a copy of the
-# Erlang Public License along with this software. If not, it can be
-# retrieved online at http://www.erlang.org/.
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
 #
-# Software distributed under the License is distributed on an "AS IS"
-# basis, WITHOUT WARRANTY OF ANY KIND, either express or implied. See
-# the License for the specific language governing rights and limitations
-# under the License.
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
 #
 # %CopyrightEnd%
 #
@@ -28,7 +29,7 @@ include $(ERL_TOP)/make/$(TARGET)/otp.mk
 # Application version
 # ----------------------------------------------------
 include ../vsn.mk
-VSN=$(GS_VSN)
+VSN=$(SSL_VSN)
 
 # ----------------------------------------------------
 # Target Specs
@@ -36,27 +37,72 @@ VSN=$(GS_VSN)
 
 MODULES = \
 	ssl_test_lib \
-	ssl_basic_SUITE \
-	ssl_handshake_SUITE \
-	ssl_packet_SUITE \
+	ssl_app_env_SUITE\
+	ssl_alert_SUITE\
+	ssl_bench_test_lib \
+	ssl_dist_test_lib \
+	ssl_api_SUITE\
+	tls_api_SUITE\
+	dtls_api_SUITE\
+        ssl_basic_SUITE \
+	ssl_bench_SUITE \
 	ssl_cipher_SUITE \
-	ssl_payload_SUITE \
-	ssl_to_openssl_SUITE \
-	ssl_session_cache_SUITE	\
+        ssl_cipher_suite_SUITE \
+	openssl_cipher_suite_SUITE\
+	ssl_alpn_SUITE \
+        openssl_alpn_SUITE\
+	ssl_npn_SUITE \
+	openssl_npn_SUITE\
+	openssl_sni_SUITE\
+	ssl_renegotiate_SUITE\
+	openssl_renegotiate_SUITE\
+	openssl_reject_SUITE\
+	ssl_cert_tests\
+        ssl_cert_SUITE\
+	openssl_server_cert_SUITE\
+	openssl_client_cert_SUITE\
+	ssl_crl_SUITE\
 	ssl_dist_SUITE \
-	make_certs\
-	erl_make_certs
+	ssl_dist_bench_SUITE \
+	ssl_engine_SUITE\
+	ssl_handshake_SUITE \
+	ssl_npn_hello_SUITE \
+	ssl_packet_SUITE \
+	ssl_payload_SUITE \
+	ssl_pem_cache_SUITE \
+	ssl_session_SUITE \
+	ssl_session_cache_SUITE	\
+	ssl_session_ticket_SUITE \
+	openssl_session_SUITE \
+	ssl_ECC_SUITE \
+	ssl_ECC_openssl_SUITE \
+	ssl_ECC\
+	ssl_upgrade_SUITE\
+	ssl_sni_SUITE \
+	ssl_eqc_SUITE \
+	ssl_rfc_5869_SUITE \
+	tls_1_3_record_SUITE\
+	openssl_tls_1_3_version_SUITE\
+	tls_1_3_version_SUITE\
+	ssl_socket_SUITE\
+	make_certs \
+        x509_test \
+	inet_crypto_dist
 
 
 ERL_FILES = $(MODULES:%=%.erl)
 
-HRL_FILES =
+HRL_FILES = \
+	ssl_dist_test_lib.hrl
 
 HRL_FILES_SRC = \
+	ssl_api.hrl\
 	ssl_internal.hrl\
 	ssl_alert.hrl \
+	tls_handshake.hrl \
 	ssl_handshake.hrl \
 	ssl_cipher.hrl \
+	tls_record.hrl \
 	ssl_record.hrl
 
 HRL_FILES_INC = 
@@ -67,7 +113,7 @@ HRL_FILES_NEEDED_IN_TEST = \
 
 TARGET_FILES = $(MODULES:%=$(EBIN)/%.$(EMULATOR))
 
-INCLUDES = -I. -I$(ERL_TOP)/lib/test_server/include/
+INCLUDES = -I.
 
 DATADIRS = ssl_basic_SUITE_data
 
@@ -86,8 +132,7 @@ RELSYSDIR = $(RELEASE_PATH)/ssl_test
 # The path to the test_server ebin dir is needed when 
 # running the target "targets".
 # ----------------------------------------------------
-ERL_COMPILE_FLAGS += -pa ../../../internal_tools/test_server/ebin \
-	             $(INCLUDES) 
+ERL_COMPILE_FLAGS += $(INCLUDES)
 
 # ----------------------------------------------------
 # Targets
@@ -122,9 +167,9 @@ release_spec: opt
 release_tests_spec: opt
 	$(INSTALL_DIR) "$(RELSYSDIR)"
 	$(INSTALL_DATA)  $(ERL_FILES) $(HRL_FILES) $(HRL_FILES_NEEDED_IN_TEST) $(COVER_FILE) "$(RELSYSDIR)"
-	$(INSTALL_DATA) ssl.spec ssl.cover "$(RELSYSDIR)"
+	$(INSTALL_DATA) ssl.spec ssl_bench.spec ssl.cover "$(RELSYSDIR)"
 	chmod -R u+w "$(RELSYSDIR)"
-	@tar cf - *_SUITE_data | (cd "$(RELSYSDIR)"; tar xf -)
+	@tar cf - *_SUITE_data property_test | (cd "$(RELSYSDIR)"; tar xf -)
 
 release_docs_spec:
 

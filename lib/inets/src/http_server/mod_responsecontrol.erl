@@ -1,18 +1,19 @@
 %%
 %% %CopyrightBegin%
 %% 
-%% Copyright Ericsson AB 2001-2011. All Rights Reserved.
+%% Copyright Ericsson AB 2001-2016. All Rights Reserved.
 %% 
-%% The contents of this file are subject to the Erlang Public License,
-%% Version 1.1, (the "License"); you may not use this file except in
-%% compliance with the License. You should have received a copy of the
-%% Erlang Public License along with this software. If not, it can be
-%% retrieved online at http://www.erlang.org/.
-%% 
-%% Software distributed under the License is distributed on an "AS IS"
-%% basis, WITHOUT WARRANTY OF ANY KIND, either express or implied. See
-%% the License for the specific language governing rights and limitations
-%% under the License.
+%% Licensed under the Apache License, Version 2.0 (the "License");
+%% you may not use this file except in compliance with the License.
+%% You may obtain a copy of the License at
+%%
+%%     http://www.apache.org/licenses/LICENSE-2.0
+%%
+%% Unless required by applicable law or agreed to in writing, software
+%% distributed under the License is distributed on an "AS IS" BASIS,
+%% WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+%% See the License for the specific language governing permissions and
+%% limitations under the License.
 %% 
 %% %CopyrightEnd%
 %%
@@ -25,7 +26,6 @@
 -include("httpd_internal.hrl").
 
 do(Info) ->
-    ?DEBUG("do -> response_control",[]),
     case proplists:get_value(status, Info#mod.data) of
 	%% A status code has been generated!
 	{_StatusCode, _PhraseArgs, _Reason} ->
@@ -52,7 +52,6 @@ do(Info) ->
 %%wheather a response shall be createed or not
 %%----------------------------------------------------------------------
 do_responsecontrol(Info) ->
-    ?DEBUG("do_response_control -> Request URI: ~p",[Info#mod.request_uri]),
     Path = mod_alias:path(Info#mod.data, Info#mod.config_db, 
 			  Info#mod.request_uri),
     case file:read_file_info(Path) of
@@ -70,7 +69,7 @@ do_responsecontrol(Info) ->
 
 
 %% If a client sends more then one of the if-XXXX fields in a request
-%% The standard says it does not specify the behaviuor so I specified it :-)
+%% The standard says it does not specify the behaviour so I specified it :-)
 %% The priority between the fields is 
 %% 1.If-modified
 %% 2.If-Unmodified
@@ -219,7 +218,6 @@ compare_etags(Tag,Etags) ->
 %% Control the If-Modified-Since and If-Not-Modified-Since header fields
 %%----------------------------------------------------------------------
 control_modification(Path,Info,FileInfo)->
-    ?DEBUG("control_modification() -> entry",[]),
     case control_modification_data(Info,
 				   FileInfo#file_info.mtime,
 				   "if-modified-since") of
@@ -259,23 +257,18 @@ control_modification_data(Info, ModificationTime, HeaderField)->
 	    	bad_date ->
 	    	    {bad_date, LastModified0};
 	    	ConvertedReqDate ->
-		    LastModified = 
-			calendar:universal_time_to_local_time(ConvertedReqDate),
-		    ?DEBUG("control_modification_data() -> "
-			   "~n   Request-Field:    ~s"
-			   "~n   FileLastModified: ~p"
-			   "~n   FieldValue:       ~p",
-			   [HeaderField, ModificationTime, LastModified]),
-		    FileTime =
+                    LastModified =  calendar:universal_time_to_local_time(ConvertedReqDate),		   
+                     FileTime =
 			calendar:datetime_to_gregorian_seconds(ModificationTime),
 		    FieldTime = 
 			calendar:datetime_to_gregorian_seconds(LastModified),
 		    if 
 			FileTime =< FieldTime ->
-			    ?DEBUG("File unmodified~n", []), unmodified;
+			    unmodified;
 			FileTime >= FieldTime ->
-			    ?DEBUG("File modified~n", []), modified	    
+			    modified	    
 		    end
+                    
 	    end
     end.
 

@@ -1,26 +1,34 @@
 %%
 %% %CopyrightBegin%
 %%
-%% Copyright Ericsson AB 2003-2011. All Rights Reserved.
+%% Copyright Ericsson AB 2003-2016. All Rights Reserved.
 %%
-%% The contents of this file are subject to the Erlang Public License,
-%% Version 1.1, (the "License"); you may not use this file except in
-%% compliance with the License. You should have received a copy of the
-%% Erlang Public License along with this software. If not, it can be
-%% retrieved online at http://www.erlang.org/.
+%% Licensed under the Apache License, Version 2.0 (the "License");
+%% you may not use this file except in compliance with the License.
+%% You may obtain a copy of the License at
 %%
-%% Software distributed under the License is distributed on an "AS IS"
-%% basis, WITHOUT WARRANTY OF ANY KIND, either express or implied. See
-%% the License for the specific language governing rights and limitations
-%% under the License.
+%%     http://www.apache.org/licenses/LICENSE-2.0
+%%
+%% Unless required by applicable law or agreed to in writing, software
+%% distributed under the License is distributed on an "AS IS" BASIS,
+%% WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+%% See the License for the specific language governing permissions and
+%% limitations under the License.
 %%
 %% %CopyrightEnd%
 %%
 -module(test_lib).
 
--include("test_server.hrl").
+-include_lib("common_test/include/ct.hrl").
 -compile({no_auto_import,[binary_part/2]}).
--export([recompile/1,opt_opts/1,get_data_dir/1,smoke_disasm/1,p_run/2,binary_part/2]).
+-export([id/1,recompile/1,parallel/0,uniq/0,opt_opts/1,get_data_dir/1,
+         is_cloned_mod/1,smoke_disasm/1,p_run/2,
+         highest_opcode/1]).
+
+%% Used by test case that override BIFs.
+-export([binary_part/2,binary/1]).
+
+id(I) -> I.
 
 recompile(Mod) when is_atom(Mod) ->
     case whereis(cover_server) of
@@ -43,48 +51,85 @@ smoke_disasm(File) when is_list(File) ->
     Res = beam_disasm:file(File),
     {beam_file,_Mod} = {element(1, Res),element(2, Res)}.
 
+parallel() ->
+    case erlang:system_info(schedulers) =:= 1 of
+	true -> [];
+	false -> [parallel]
+    end.
+
+uniq() ->
+    U = erlang:unique_integer([positive]),
+    "_" ++ integer_to_list(U).
+
 %% Retrieve the "interesting" compiler options (options for optimization
 %% and compatibility) for the given module.
 
 opt_opts(Mod) ->
     Comp = Mod:module_info(compile),
-    {value,{options,Opts}} = lists:keysearch(options, 1, Comp),
-    lists:filter(fun(no_copt) -> true;
-		    (no_postopt) -> true;
-		    (no_float_opt) -> true;
-		    (no_new_funs) -> true;
-		    (no_new_binaries) -> true;
-		    (no_new_apply) -> true;
-		    (no_gc_bifs) -> true;
-		    (no_stack_trimming) -> true;
-		    (debug_info) -> true;
-		    (inline) -> true;
-		    (_) -> false
-		 end, Opts).
+    {options,Opts} = lists:keyfind(options, 1, Comp),
+    lists:filter(fun
+                     (debug_info) -> true;
+                     (inline) -> true;
+                     (no_bsm3) -> true;
+                     (no_bsm_opt) -> true;
+                     (no_copt) -> true;
+                     (no_fun_opt) -> true;
+                     (no_module_opt) -> true;
+                     (no_postopt) -> true;
+                     (no_put_tuple2) -> true;
+                     (no_recv_opt) -> true;
+                     (no_share_opt) -> true;
+                     (no_ssa_float) -> true;
+                     (no_ssa_opt) -> true;
+                     (no_stack_trimming) -> true;
+                     (no_type_opt) -> true;
+                     (_) -> false
+                end, Opts).
 
 %% Some test suites gets cloned (e.g. to "record_SUITE" to
 %% "record_no_opt_SUITE"), but the data directory is not cloned.
 %% This function retrieves the path to the original data directory.
 
 get_data_dir(Config) ->
-    Data0 = ?config(data_dir, Config),
+    Data0 = proplists:get_value(data_dir, Config),
     Opts = [{return,list}],
     Data1 = re:replace(Data0, "_no_opt_SUITE", "_SUITE", Opts),
-    Data = re:replace(Data1, "_post_opt_SUITE", "_SUITE", Opts),
-    re:replace(Data, "_inline_SUITE", "_SUITE", Opts).
+    Data2 = re:replace(Data1, "_post_opt_SUITE", "_SUITE", Opts),
+    Data3 = re:replace(Data2, "_inline_SUITE", "_SUITE", Opts),
+    Data4 = re:replace(Data3, "_r21_SUITE", "_SUITE", Opts),
+    Data5 = re:replace(Data4, "_no_module_opt_SUITE", "_SUITE", Opts),
+    Data = re:replace(Data5, "_no_type_opt_SUITE", "_SUITE", Opts),
+    re:replace(Data, "_no_ssa_opt_SUITE", "_SUITE", Opts).
+
+is_cloned_mod(Mod) ->
+    is_cloned_mod_1(atom_to_list(Mod)).
+
+%% Test whether Mod is a cloned module.
+
+is_cloned_mod_1("_no_opt_SUITE") -> true;
+is_cloned_mod_1("_no_ssa_opt_SUITE") -> true;
+is_cloned_mod_1("_post_opt_SUITE") -> true;
+is_cloned_mod_1("_inline_SUITE") -> true;
+is_cloned_mod_1("_21_SUITE") -> true;
+is_cloned_mod_1("_no_module_opt_SUITE") -> true;
+is_cloned_mod_1([_|T]) -> is_cloned_mod_1(T);
+is_cloned_mod_1([]) -> false.
+
+%% Return the highest opcode use in the BEAM module.
+
+highest_opcode(Beam) ->
+    {ok,{_Mod,[{"Code",Code}]}} = beam_lib:chunks(Beam, ["Code"]),
+    FormatNumber = 0,
+    <<16:32,FormatNumber:32,HighestOpcode:32,_/binary>> = Code,
+    HighestOpcode.
 
 %% p_run(fun(Data) -> ok|error, List) -> ok
 %%  Will fail the test case if there were any errors.
 
 p_run(Test, List) ->
-    N = case ?t:is_cover() of
-	    false ->
-		erlang:system_info(schedulers);
-	    true ->
-		%% Cover is running. Using more than one process
-		%% will probably only slow down compilation.
-		1
-	end,
+    S = erlang:system_info(schedulers),
+    N = S + 1,
+    io:format("p_run: ~p parallel processes\n", [N]),
     p_run_loop(Test, List, N, [], 0, 0).
 
 p_run_loop(_, [], _, [], Errors, Ws) ->
@@ -95,7 +140,8 @@ p_run_loop(_, [], _, [], Errors, Ws) ->
 		1 -> {comment,"1 warning"};
 		N -> {comment,integer_to_list(N)++" warnings"}
 	    end;
-	N -> ?t:fail({N,errors})
+	N ->
+	    ct:fail({N,errors})
     end;
 p_run_loop(Test, [H|T], N, Refs, Errors, Ws) when length(Refs) < N ->
     {_,Ref} = erlang:spawn_monitor(fun() -> exit(Test(H)) end),
@@ -115,3 +161,7 @@ p_run_loop(Test, List, N, Refs0, Errors0, Ws0) ->
 %% This is for the misc_SUITE:override_bif testcase
 binary_part(_A,_B) ->
     dummy.
+
+%% This is for overridden_bif_SUITE.
+binary(N) ->
+    N rem 10 =:= 0.

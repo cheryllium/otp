@@ -1,18 +1,19 @@
 %%
 %% %CopyrightBegin%
 %% 
-%% Copyright Ericsson AB 1996-2011. All Rights Reserved.
+%% Copyright Ericsson AB 1996-2018. All Rights Reserved.
 %% 
-%% The contents of this file are subject to the Erlang Public License,
-%% Version 1.1, (the "License"); you may not use this file except in
-%% compliance with the License. You should have received a copy of the
-%% Erlang Public License along with this software. If not, it can be
-%% retrieved online at http://www.erlang.org/.
-%% 
-%% Software distributed under the License is distributed on an "AS IS"
-%% basis, WITHOUT WARRANTY OF ANY KIND, either express or implied. See
-%% the License for the specific language governing rights and limitations
-%% under the License.
+%% Licensed under the Apache License, Version 2.0 (the "License");
+%% you may not use this file except in compliance with the License.
+%% You may obtain a copy of the License at
+%%
+%%     http://www.apache.org/licenses/LICENSE-2.0
+%%
+%% Unless required by applicable law or agreed to in writing, software
+%% distributed under the License is distributed on an "AS IS" BASIS,
+%% WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+%% See the License for the specific language governing permissions and
+%% limitations under the License.
 %% 
 %% %CopyrightEnd%
 %%
@@ -76,7 +77,7 @@ start_pseudo(_,_,_) -> ok.  %% It's already there
       Pid :: pid().
 
 relay({badrpc,Reason}) ->
-    error_msg(" ** exiting relay server ~w :~w  **~n", [self(),Reason]),
+    error_msg(" ** exiting relay server ~w :~tw  **~n", [self(),Reason]),
     exit(Reason);
 relay(undefined) ->
     error_msg(" ** exiting relay server ~w  **~n", [self()]),
@@ -103,18 +104,17 @@ relay1(Pid) ->
 %% this to work is that the 'erl' program can be found in PATH.
 %%
 %% If the master and slave are on different hosts, start/N uses
-%% the 'rsh' program to spawn an Erlang node on the other host.
+%% the 'ssh' program to spawn an Erlang node on the other host.
 %% Alternative, if the master was started as
 %% 'erl -sname xxx -rsh my_rsh...', then 'my_rsh' will be used instead
-%% of 'rsh' (this is useful for systems where the rsh program is named
-%% 'remsh').
+%% of 'ssh' (this is useful for systems still using rsh or remsh).
 %%
 %% For this to work, the following conditions must be fulfilled:
 %%
-%% 1. There must be an Rsh program on computer; if not an error
+%% 1. There must be an ssh program on computer; if not an error
 %%    is returned.
 %%
-%% 2. The hosts must be configured to allowed 'rsh' access without
+%% 2. The hosts must be configured to allow 'ssh' access without
 %%    prompts for password.
 %%
 %% The slave node will have its filer and user server redirected
@@ -128,7 +128,7 @@ relay1(Pid) ->
 %%	    {error, {already_running, Name@Host}}
 
 -spec start(Host) -> {ok, Node} | {error, Reason} when
-      Host :: atom(),
+      Host :: inet:hostname(),
       Node :: node(),
       Reason :: timeout | no_rsh | {already_running, Node}.
 
@@ -138,8 +138,8 @@ start(Host) ->
     start(Host, Name, [], no_link).
 
 -spec start(Host, Name) -> {ok, Node} | {error, Reason} when
-      Host :: atom(),
-      Name :: atom(),
+      Host :: inet:hostname(),
+      Name :: atom() | string(),
       Node :: node(),
       Reason :: timeout | no_rsh | {already_running, Node}.
 
@@ -147,8 +147,8 @@ start(Host, Name) ->
     start(Host, Name, []).
 
 -spec start(Host, Name, Args) -> {ok, Node} | {error, Reason} when
-      Host :: atom(),
-      Name :: atom(),
+      Host :: inet:hostname(),
+      Name :: atom() | string(),
       Args :: string(),
       Node :: node(),
       Reason :: timeout | no_rsh | {already_running, Node}.
@@ -157,7 +157,7 @@ start(Host, Name, Args) ->
     start(Host, Name, Args, no_link).
 
 -spec start_link(Host) -> {ok, Node} | {error, Reason} when
-      Host :: atom(),
+      Host :: inet:hostname(),
       Node :: node(),
       Reason :: timeout | no_rsh | {already_running, Node}.
 
@@ -167,8 +167,8 @@ start_link(Host) ->
     start(Host, Name, [], self()).
 
 -spec start_link(Host, Name) -> {ok, Node} | {error, Reason} when
-      Host :: atom(),
-      Name :: atom(),
+      Host :: inet:hostname(),
+      Name :: atom() | string(),
       Node :: node(),
       Reason :: timeout | no_rsh | {already_running, Node}.
 
@@ -176,8 +176,8 @@ start_link(Host, Name) ->
     start_link(Host, Name, []).
 
 -spec start_link(Host, Name, Args) -> {ok, Node} | {error, Reason} when
-      Host :: atom(),
-      Name :: atom(),
+      Host :: inet:hostname(),
+      Name :: atom() | string(),
       Args :: string(),
       Node :: node(),
       Reason :: timeout | no_rsh | {already_running, Node}.
@@ -186,7 +186,7 @@ start_link(Host, Name, Args) ->
     start(Host, Name, Args, self()).
 
 start(Host0, Name, Args, LinkTo) ->
-    Prog = lib:progname(),
+    Prog = progname(),
     start(Host0, Name, Args, LinkTo, Prog).
 
 start(Host0, Name, Args, LinkTo, Prog) ->
@@ -210,7 +210,6 @@ start(Host0, Name, Args, LinkTo, Prog) ->
       Node :: node().
 
 stop(Node) ->
-%    io:format("stop(~p)~n", [Node]),
     rpc:call(Node, erlang, halt, []),
     ok.
 
@@ -229,7 +228,6 @@ wait_for_slave(Parent, Host, Name, Node, Args, LinkTo, Prog) ->
     Waiter = register_unique_name(0),
     case mk_cmd(Host, Name, Args, Waiter, Prog) of
 	{ok, Cmd} ->
-%%	    io:format("Command: ~s~n", [Cmd]),
 	    open_port({spawn, Cmd}, [stream]),
 	    receive
 		{SlavePid, slave_started} ->
@@ -287,16 +285,16 @@ register_unique_name(Number) ->
 
 %% Makes up the command to start the nodes.
 %% If the node should run on the local host, there is
-%% no need to use rsh.
+%% no need to use a remote shell.
 
-mk_cmd(Host, Name, Args, Waiter, Prog) ->
+mk_cmd(Host, Name, Args, Waiter, Prog0) ->
+    Prog = quote_progname(Prog0),
     BasicCmd = lists:concat([Prog,
 			     " -detached -noinput -master ", node(),
 			     " ", long_or_short(), Name, "@", Host,
 			     " -s slave slave_start ", node(),
 			     " ", Waiter,
 			     " ", Args]),
-	   
     case after_char($@, atom_to_list(node())) of
 	Host ->
 	    {ok, BasicCmd};
@@ -309,9 +307,41 @@ mk_cmd(Host, Name, Args, Waiter, Prog) ->
 	    end
     end.
 
-%% Give the user an opportunity to run another program,
-%% than the "rsh".  On HP-UX rsh is called remsh; thus HP users
-%% must start erlang as erl -rsh remsh.
+%% Return the name of the script that starts (this) erlang
+progname() ->
+    case init:get_argument(progname) of
+	{ok, [[Prog]]} ->
+	    Prog;
+	_Other ->
+	    "no_prog_name"
+    end.
+
+%% This is an attempt to distinguish between spaces in the program
+%% path and spaces that separate arguments. The program is quoted to
+%% allow spaces in the path.
+%%
+%% Arguments could exist either if the executable is excplicitly given
+%% (through start/5) or if the -program switch to beam is used and
+%% includes arguments (typically done by cerl in OTP test environment
+%% in order to ensure that slave/peer nodes are started with the same
+%% emulator and flags as the test node. The result from progname()
+%% could then typically be '/<full_path_to>/cerl -gcov').
+quote_progname(Progname) ->
+    do_quote_progname(string:lexemes(to_list(Progname)," ")).
+
+do_quote_progname([Prog]) ->
+    "\""++Prog++"\"";
+do_quote_progname([Prog,Arg|Args]) ->
+    case os:find_executable(Prog) of
+	false ->
+	    do_quote_progname([Prog++" "++Arg | Args]);
+	_ ->
+	    %% this one has an executable - we assume the rest are arguments
+	    "\""++Prog++"\""++
+		lists:flatten(lists:map(fun(X) -> [" ",X] end, [Arg|Args]))
+    end.
+
+%% Give the user an opportunity to run another program than "ssh".
 %%
 %% Also checks that the given program exists.
 %%
@@ -321,7 +351,7 @@ rsh() ->
     Rsh =
 	case init:get_argument(rsh) of
 	    {ok, [[Prog]]} -> Prog;
-	    _ -> "rsh"
+	    _ -> "ssh"
 	end,
     case os:find_executable(Rsh) of
 	false -> {error, no_rsh};

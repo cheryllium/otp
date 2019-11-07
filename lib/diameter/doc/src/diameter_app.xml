@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="latin1" ?>
+<?xml version="1.0" encoding="utf-8" ?>
 <!DOCTYPE erlref SYSTEM "erlref.dtd" [
   <!ENTITY message '<seealso marker="#message">message()</seealso>'>
   <!ENTITY dict
@@ -13,20 +13,22 @@
 <header>
 
 <copyright>
-<year>2011</year><year>2012</year>
+<year>2011</year>
+<year>2017</year>
 <holder>Ericsson AB. All Rights Reserved.</holder>
 </copyright>
 <legalnotice>
-The contents of this file are subject to the Erlang Public License,
-Version 1.1, (the "License"); you may not use this file except in
-compliance with the License. You should have received a copy of the
-Erlang Public License along with this software. If not, it can be
-retrieved online at http://www.erlang.org/.
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+ 
+    http://www.apache.org/licenses/LICENSE-2.0
 
-Software distributed under the License is distributed on an "AS IS"
-basis, WITHOUT WARRANTY OF ANY KIND, either express or implied. See
-the License for the specific language governing rights and limitations
-under the License.
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
 
 </legalnotice>
 
@@ -37,12 +39,12 @@ under the License.
 <approved></approved>
 <checked></checked>
 <date></date>
-<rev>%REV%</rev>
+<rev></rev>
 <file>diameter_app.xml</file>
 
 </header>
 
-<module>diameter_app</module>
+<module since="OTP R14B03">diameter_app</module>
 <modulesummary>
 Callback module of a Diameter application.</modulesummary>
 
@@ -89,17 +91,14 @@ is called in response to an incoming Diameter request message.</p>
 
 </list>
 
-</description>
-
-<note>
 <p>
-The arities given for the the callback functions here assume no extra
-arguments.
+The arities for the the callback functions here assume no extra arguments.
 All functions will also be passed any extra arguments configured with
 the callback module itself when calling &mod_start_service;
 and, for the call-specific callbacks, any extra arguments passed to
 &mod_call;.</p>
-</note>
+
+</description>
 
 <!-- ===================================================================== -->
 <!-- ===================================================================== -->
@@ -109,9 +108,8 @@ and, for the call-specific callbacks, any extra arguments passed to
 
 <taglist>
 
-<marker id="capabilities"/>
-
-<tag><c>capabilities() = #diameter_caps{}</c></tag>
+<tag>
+<marker id="capabilities"/><c>capabilities() = #diameter_caps{}</c></tag>
 <item>
 <p>
 A record containing the identities of
@@ -125,9 +123,8 @@ Optional or possibly multiple values are encoded as lists of values,
 mandatory values as the bare value.</p>
 </item>
 
-<marker id="message"/>
-
-<tag><c>message() = &codec_message;</c></tag>
+<tag>
+<marker id="message"/><c>message() = &codec_message;</c></tag>
 <item>
 <p>
 The representation of a Diameter message as passed to
@@ -135,9 +132,8 @@ The representation of a Diameter message as passed to
 
 </item>
 
-<marker id="packet"/>
-
-<tag><c>packet() = &codec_packet;</c></tag>
+<tag>
+<marker id="packet"/><c>packet() = &codec_packet;</c></tag>
 <item>
 <p>
 A container for incoming and outgoing Diameter messages that's passed
@@ -145,25 +141,22 @@ through encode/decode and transport.
 Fields should not be set in return values except as documented.</p>
 </item>
 
-<marker id="peer_ref"/>
-
-<tag><c>peer_ref() = term()</c></tag>
+<tag>
+<marker id="peer_ref"/><c>peer_ref() = term()</c></tag>
 <item>
 <p>
 A term identifying a transport connection with a Diameter peer.</p>
 </item>
 
-<marker id="peer"/>
-
-<tag><c>peer() = {&peer_ref;, &capabilities;}</c></tag>
+<tag>
+<marker id="peer"/><c>peer() = {&peer_ref;, &capabilities;}</c></tag>
 <item>
 <p>
 A tuple representing a Diameter peer connection.</p>
 </item>
 
-<marker id="state"/>
-
-<tag><c>state() = term()</c></tag>
+<tag>
+<marker id="state"/><c>state() = term()</c></tag>
 <item>
 <p>
 The state maintained by the application callback functions
@@ -187,7 +180,7 @@ process.</p>
 <funcs>
 
 <func>
-<name>Mod:peer_up(SvcName, Peer, State) -> NewState</name>
+<name since="OTP R14B03">Mod:peer_up(SvcName, Peer, State) -> NewState</name>
 <fsummary>Invoked when a transport connection has been established</fsummary>
 <type>
 <v>SvcName = &mod_service_name;</v>
@@ -196,7 +189,8 @@ process.</p>
 </type>
 <desc>
 <p>
-Invoked to signal the availability of a peer connection.
+Invoked to signal the availability of a peer connection on the local
+Erlang node.
 In particular, capabilities exchange with the peer has indicated
 support for the application in question, the RFC 3539 watchdog state
 machine for the connection has reached state <c>OKAY</c> and Diameter
@@ -221,7 +215,7 @@ handled independently of &peer_up; and &peer_down;.</p>
 </func>
 
 <func>
-<name>Mod:peer_down(SvcName, Peer, State) -> NewState</name>
+<name since="OTP R14B03">Mod:peer_down(SvcName, Peer, State) -> NewState</name>
 <fsummary>Invoked when a transport connection has been lost.</fsummary>
 <type>
 <v>SvcName = &mod_service_name;</v>
@@ -230,8 +224,8 @@ handled independently of &peer_up; and &peer_down;.</p>
 </type>
 <desc>
 <p>
-Invoked to signal that a peer connection is no longer available
-following a previous call to &peer_up;.
+Invoked to signal that a peer connection on the local Erlang node is
+no longer available following a previous call to &peer_up;.
 In particular, that the RFC 3539 watchdog state machine for the
 connection has left state <c>OKAY</c> and the peer will no longer be a
 candidate in &pick_peer; callbacks.</p>
@@ -240,11 +234,11 @@ candidate in &pick_peer; callbacks.</p>
 </func>
 
 <func>
-<name>Mod:pick_peer(Candidates, _Reserved, SvcName, State)
+<name since="OTP R14B03">Mod:pick_peer(LocalCandidates, RemoteCandidates, SvcName, State)
       -> Selection | false</name>
 <fsummary>Select a target peer for an outgoing request.</fsummary>
 <type>
-<v>Candidates = [&peer;]</v>
+<v>LocalCandidates = RemoteCandidates = [&peer;]</v>
 <v>SvcName = &mod_service_name;</v>
 <v>State = NewState = &state;</v>
 <v>Selection = {ok, Peer} | {Peer, NewState}</v>
@@ -257,7 +251,7 @@ peer for an outgoing request.
 The return value indicates the selected peer.</p>
 
 <p>
-The candidate list contains only those peers that have advertised
+The candidate lists contain only those peers that have advertised
 support for the Diameter application in question during capabilities
 exchange, that have not be excluded by a <c>filter</c> option in
 the call to &mod_call;
@@ -266,7 +260,11 @@ The order of the elements is unspecified except that any
 peers whose Origin-Host and Origin-Realm matches that of the
 outgoing request (in the sense of a <c>{filter, {all, [host, realm]}}</c>
 option to &mod_call;)
-will be placed at the head of the list.</p>
+will be placed at the head of the list.
+<c>LocalCandidates</c> contains peers whose transport process resides
+on the local Erlang node while
+<c>RemoteCandidates</c> contains peers that have been communicated
+from other nodes by services of the same name.</p>
 
 <p>
 A callback that returns a peer() will be followed by a
@@ -286,31 +284,34 @@ retransmission to an alternate peer is abandoned if an answer is
 received from a previously selected peer.</p>
 
 <p>
-Returning <c>false</c> or <c>{false, NewState}</c> causes <c>{error,
-no_connection}</c> to be returned from &mod_call;.</p>
-
-<p>
 The return values <c>false</c> and <c>{false, State}</c> (that is,
 <c>NewState = State</c>) are equivalent, as are <c>{ok, Peer}</c> and
 <c>{Peer, State}</c>.</p>
 
 <note>
 <p>
+The &mod_service_opt; <c>use_shared_peers</c> determines whether or
+not a service uses peers shared from other nodes.
+If not then <c>RemoteCandidates</c> is the empty list.</p>
+</note>
+
+<warning>
+<p>
 The return value <c>{Peer, NewState}</c> is only allowed if
 the Diameter application in question was configured with the
 &mod_application_opt; <c>{call_mutates_state, true}</c>.
 Otherwise, the <c>State</c> argument is always
-the intial value as configured on the application, not any subsequent
+the initial value as configured on the application, not any subsequent
 value returned by a &peer_up;
 or &peer_down; callback.</p>
-</note>
+</warning>
 
 </desc>
 
 </func>
 
 <func>
-<name>Mod:prepare_request(Packet, SvcName, Peer) -> Action</name>
+<name since="OTP R14B03">Mod:prepare_request(Packet, SvcName, Peer) -> Action</name>
 <fsummary>Return a request for encoding and transport.</fsummary>
 <type>
 <v>Packet = &packet;</v>
@@ -319,7 +320,7 @@ or &peer_down; callback.</p>
 <v>Action = Send | Discard | {eval_packet, Action, PostF}</v>
 <v>Send = {send, &packet; | &message;}</v>
 <v>Discard = {discard, Reason} | discard</v>
-<v>PostF = &mod_evaluable;}</v>
+<v>PostF = &mod_eval;}</v>
 </type>
 <desc>
 <p>
@@ -362,7 +363,7 @@ discarded}</c>.</p>
 </func>
 
 <func>
-<name>Mod:prepare_retransmit(Packet, SvcName, Peer) -> Action</name>
+<name since="OTP R14B03">Mod:prepare_retransmit(Packet, SvcName, Peer) -> Action</name>
 <fsummary>Return a request for encoding and retransmission.</fsummary>
 <type>
 <v>Packet  = &packet;</v>
@@ -371,7 +372,7 @@ discarded}</c>.</p>
 <v>Action = Send | Discard | {eval_packet, Action, PostF}</v>
 <v>Send = {send, &packet; | &message;}</v>
 <v>Discard = {discard, Reason} | discard</v>
-<v>PostF = &mod_evaluable;}</v>
+<v>PostF = &mod_eval;}</v>
 </type>
 <desc>
 <p>
@@ -392,7 +393,7 @@ discarded}</c>.</p>
 </func>
 
 <func>
-<name>Mod:handle_answer(Packet, Request, SvcName, Peer) -> Result</name>
+<name since="OTP R14B03">Mod:handle_answer(Packet, Request, SvcName, Peer) -> Result</name>
 <fsummary>Receive an answer message from a peer.</fsummary>
 <type>
 <v>Packet  = &packet;</v>
@@ -436,7 +437,7 @@ The &mod_application_opt;
 </func>
 
 <func>
-<name>Mod:handle_error(Reason, Request, SvcName, Peer) -> Result</name>
+<name since="OTP R14B03">Mod:handle_error(Reason, Request, SvcName, Peer) -> Result</name>
 <fsummary>Return an error from a outgoing request.</fsummary>
 <type>
 <v>Reason  = timeout | failover | term()</v>
@@ -464,7 +465,7 @@ not selected.</p>
 </func>
 
 <func>
-<name>Mod:handle_request(Packet, SvcName, Peer) -> Action</name>
+<name since="OTP R14B03">Mod:handle_request(Packet, SvcName, Peer) -> Action</name>
 <fsummary>Receive an incoming request.</fsummary>
 <type>
 <v>Packet  = &packet;</v>
@@ -475,9 +476,10 @@ not selected.</p>
            | discard
            | {eval|eval_packet, Action, PostF}</v>
 <v>Reply   = {reply, &packet; | &message;}
+           | {answer_message, 3000..3999|5000..5999}
            | {protocol_error, 3000..3999}</v>
 <v>Opt     = &mod_call_opt;</v>
-<v>PostF   = &mod_evaluable;</v>
+<v>PostF   = &mod_eval;</v>
 </type>
 <desc>
 <p>
@@ -509,14 +511,15 @@ Otherwise it contains the record representing the request as outlined
 in &dict;.</p>
 
 <p>
-The <c>errors</c> field specifies any Result-Code's identifying errors
-that were encountered in decoding the request.
-In this case diameter will set both Result-Code and
-Failed-AVP AVP's in a returned
-answer &message; before sending it to the peer:
-the returned &message; need only set any other required AVP's.
-Note that the errors detected by diameter are all of the 5xxx series
-(Permanent Failures).
+The <c>errors</c> field specifies any results codes identifying errors
+found while decoding the request.
+This is used to set Result-Code and/or Failed-AVP in a returned
+answer unless the callback returns a <c>#diameter_packet{}</c>
+whose <c>errors</c> field is set to either a non-empty list of its
+own, in which case this list is used instead, or the atom <c>false</c>
+to disable any setting of Result-Code and Failed-AVP.
+Note that the errors detected by diameter are of the 3xxx
+and 5xxx series, Protocol Errors and Permanent Failures respectively.
 The <c>errors</c> list is empty if the request has been received in
 the relay application.</p>
 
@@ -544,24 +547,34 @@ preserved in the outgoing answer, appropriate values otherwise
 being set by diameter.</p>
 </item>
 
-<tag><c>{protocol_error, 3000..3999}</c></tag>
+<tag><c>{answer_message, 3000..3999|5000..5999}</c></tag>
 <item>
 <p>
 Send an answer message to the peer containing the specified
-protocol error.
+Result-Code.
 Equivalent to</p>
 <pre>
 {reply, ['answer-message' | Avps]
 </pre>
 <p>
 where <c>Avps</c> sets the Origin-Host, Origin-Realm, the specified
-Result-Code and (if the request sent one) Session-Id AVP's.</p>
+Result-Code and (if the request contained one) Session-Id AVPs, and
+possibly Failed-AVP as described below.</p>
 
 <p>
-Note that &the_rfc; mandates that only answers with a 3xxx series
-Result-Code (protocol errors) may set the E bit.
-Returning a non-3xxx value in a <c>protocol_error</c> tuple
-will cause the request process in question to fail.</p>
+Returning a value other than 3xxx or 5xxx will cause the request
+process in question to fail, as will returning a 5xxx value if the
+peer connection in question has been configured with the RFC 3588
+common dictionary <c>diameter_gen_base_rfc3588</c>.
+(Since RFC 3588 only allows 3xxx values in an answer-message.)</p>
+
+<p>
+When returning 5xxx, Failed-AVP will be populated with the AVP of the
+first matching Result-Code/AVP pair in the <c>errors</c> field of the
+argument &packet;, if found.
+If this is not appropriate then an answer-message should be
+constructed explicitly and returned in a <c>reply</c> tuple
+instead.</p>
 </item>
 
 <tag><c>{relay, Opts}</c></tag>
@@ -581,8 +594,7 @@ header of the relayed request.</p>
 The returned <c>Opts</c> should not specify <c>detach</c>.
 A subsequent &handle_answer;
 callback for the relayed request must return its first
-argument, the <c>#diameter_packet{}</c> record containing the answer
-message.
+argument, the &packet; containing the answer message.
 Note that the <c>extra</c> option can be specified to supply arguments
 that can distinguish the relay case from others if so desired.
 Any other return value (for example, from a
@@ -614,11 +626,20 @@ containing the encoded binary.
 The return value is ignored.</p>
 </item>
 
+<tag><c>{protocol_error, 3000..3999}</c></tag>
+<item>
+<p>
+Equivalent to <c>{answer_message, 3000..3999}</c>.</p>
+</item>
+
 </taglist>
 
+<note>
 <p>
-Note that protocol errors detected by diameter will result in an
-answer message without <c>handle_request/3</c> being invoked.</p>
+Requests containing errors may be answered by diameter, without a
+callback taking place, depending on the value of the
+&mod_application_opt; <c>request_errors</c>.</p>
+</note>
 
 </desc>
 </func>

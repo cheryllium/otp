@@ -1,18 +1,19 @@
 /*
  * %CopyrightBegin%
  *
- * Copyright Ericsson AB 2001-2010. All Rights Reserved.
+ * Copyright Ericsson AB 2001-2016. All Rights Reserved.
  *
- * The contents of this file are subject to the Erlang Public License,
- * Version 1.1, (the "License"); you may not use this file except in
- * compliance with the License. You should have received a copy of the
- * Erlang Public License along with this software. If not, it can be
- * retrieved online at http://www.erlang.org/.
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
  *
- * Software distributed under the License is distributed on an "AS IS"
- * basis, WITHOUT WARRANTY OF ANY KIND, either express or implied. See
- * the License for the specific language governing rights and limitations
- * under the License.
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  *
  * %CopyrightEnd%
  *
@@ -115,13 +116,15 @@ static int print_term(FILE* fp, ei_x_buff* x,
 			       const char* buf, int* index)
 {
     int i, doquote, n, m, ty, r;
-    char a[MAXATOMLEN+1], *p;
+    char a[MAXATOMLEN], *p;
     int ch_written = 0;		/* counter of written chars */
     erlang_pid pid;
     erlang_port port;
     erlang_ref ref;
+    erlang_fun fun;
     double d;
     long l;
+    const char* delim;
 
     int tindex = *index;
 
@@ -130,9 +133,12 @@ static int print_term(FILE* fp, ei_x_buff* x,
     if (fp == NULL && x == NULL) return -1;
 
     doquote = 0;
-    ei_get_type_internal(buf, index, &ty, &n);
+    ei_get_type(buf, index, &ty, &n);
     switch (ty) {
-    case ERL_ATOM_EXT:
+    case ERL_ATOM_EXT:   
+    case ERL_ATOM_UTF8_EXT:
+    case ERL_SMALL_ATOM_EXT:
+    case ERL_SMALL_ATOM_UTF8_EXT:
 	if (ei_decode_atom(buf, index, a) < 0)
 	   goto err;
 	doquote = !islower((int)a[0]);
@@ -147,15 +153,18 @@ static int print_term(FILE* fp, ei_x_buff* x,
 	}
 	break;
     case ERL_PID_EXT:
+    case ERL_NEW_PID_EXT:
 	if (ei_decode_pid(buf, index, &pid) < 0) goto err;
 	ch_written += xprintf(fp, x, "<%s.%d.%d>", pid.node,
 			      pid.num, pid.serial);
 	break;
     case ERL_PORT_EXT:
+    case ERL_NEW_PORT_EXT:
 	if (ei_decode_port(buf, index, &port) < 0) goto err;
 	ch_written += xprintf(fp, x, "#Port<%d.%d>", port.id, port.creation);
 	break;
     case ERL_NEW_REFERENCE_EXT:
+    case ERL_NEWER_REFERENCE_EXT:
     case ERL_REFERENCE_EXT:
 	if (ei_decode_ref(buf, index, &ref) < 0) goto err;
 	ch_written += xprintf(fp, x, "#Ref<");
@@ -182,7 +191,7 @@ static int print_term(FILE* fp, ei_x_buff* x,
 		xputs(", ", fp, x); ch_written += 2;
 	    }
 	}
-	if (ei_get_type_internal(buf, &tindex, &ty, &n) < 0) goto err;
+	if (ei_get_type(buf, &tindex, &ty, &n) < 0) goto err;
 	if (ty != ERL_NIL_EXT) {
 	    xputs(" | ", fp, x); ch_written += 3;
 	    r = print_term(fp, x, buf, &tindex);
@@ -232,16 +241,50 @@ static int print_term(FILE* fp, ei_x_buff* x,
 	    m = BINPRINTSIZE;
 	else
 	    m = l;
-	--m;
+        delim = "";
 	for (i = 0; i < m; ++i) {
-	    ch_written += xprintf(fp, x, "%d,", p[i]);
+	    ch_written += xprintf(fp, x, "%s%u", delim, (unsigned char)p[i]);
+            delim = ",";
 	}
-	ch_written += xprintf(fp, x, "%d", p[i]);
 	if (l > BINPRINTSIZE)
 	    ch_written += xprintf(fp, x, ",...");
 	xputc('>', fp, x); ++ch_written;
 	ei_free(p);
 	break;
+    case ERL_BIT_BINARY_EXT: {
+        const unsigned char* cp;
+        size_t bits;
+        unsigned int bitoffs;
+        int trunc = 0;
+
+        if (ei_decode_bitstring(buf, index, (const char**)&cp, &bitoffs, &bits) < 0
+            || bitoffs != 0) {
+            goto err;
+        }
+        ch_written += xprintf(fp, x, "#Bits<");
+        if ((bits+7) / 8 > BINPRINTSIZE) {
+            m = BINPRINTSIZE;
+            trunc = 1;
+        }
+        else
+            m = bits / 8;
+
+        delim = "";
+        for (i = 0; i < m; ++i) {
+            ch_written += xprintf(fp, x, "%s%u", delim, cp[i]);
+            delim = ",";
+        }
+        if (trunc)
+            ch_written += xprintf(fp, x, ",...");
+        else {
+            bits %= 8;
+            if (bits)
+                ch_written += xprintf(fp, x, "%s%u:%u", delim,
+                                      (cp[i] >> (8-bits)), bits);
+        }
+        xputc('>', fp, x); ++ch_written;
+        break;
+    }
     case ERL_SMALL_INTEGER_EXT:
     case ERL_INTEGER_EXT:
 	if (ei_decode_long(buf, index, &l) < 0) goto err;
@@ -271,11 +314,45 @@ static int print_term(FILE* fp, ei_x_buff* x,
             
         }
         break;
-
     case ERL_FLOAT_EXT:
     case NEW_FLOAT_EXT:
 	if (ei_decode_double(buf, index, &d) < 0) goto err;
 	ch_written += xprintf(fp, x, "%f", d);
+	break;
+    case ERL_MAP_EXT:
+	if (ei_decode_map_header(buf, &tindex, &n) < 0) goto err;
+        ch_written += xprintf(fp, x, "#{");
+	for (i = 0; i < n; ++i) {
+	    r = print_term(fp, x, buf, &tindex);
+	    if (r < 0) goto err;
+	    ch_written += r;
+            ch_written += xprintf(fp, x, " => ");
+	    r = print_term(fp, x, buf, &tindex);
+	    if (r < 0) goto err;
+	    ch_written += r;
+	    if (i < n-1) {
+		xputs(", ", fp, x); ch_written += 2;
+	    }
+	}
+	*index = tindex;
+	xputc('}', fp, x); ch_written++;
+	break;
+    case ERL_FUN_EXT:
+    case ERL_NEW_FUN_EXT:
+    case ERL_EXPORT_EXT:
+	if (ei_decode_fun(buf, &tindex, &fun) < 0) goto err;
+        if (fun.type == EI_FUN_EXPORT) {
+            ch_written += xprintf(fp, x, "fun %s:%s/%ld",
+                                  fun.module,
+                                  fun.u.exprt.func,
+                                  fun.arity);
+        } else {
+            ch_written += xprintf(fp, x, "#Fun{%s.%ld.%lu}",
+                                  fun.module,
+                                  fun.u.closure.index,
+                                  fun.u.closure.uniq);
+        }
+	*index = tindex;
 	break;
     default:
 	goto err;

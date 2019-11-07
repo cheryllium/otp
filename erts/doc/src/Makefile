@@ -1,21 +1,22 @@
-# 
+#
 # %CopyrightBegin%
 #
-# Copyright Ericsson AB 1997-2012. All Rights Reserved.
+# Copyright Ericsson AB 1997-2019. All Rights Reserved.
 #
-# The contents of this file are subject to the Erlang Public License,
-# Version 1.1, (the "License"); you may not use this file except in
-# compliance with the License. You should have received a copy of the
-# Erlang Public License along with this software. If not, it can be
-# retrieved online at http://www.erlang.org/.
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
 #
-# Software distributed under the License is distributed on an "AS IS"
-# basis, WITHOUT WARRANTY OF ANY KIND, either express or implied. See
-# the License for the specific language governing rights and limitations
-# under the License.
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
 #
 # %CopyrightEnd%
-# 
+#
 
 SPECS_ESRC = ../../preloaded/src/
 
@@ -46,40 +47,72 @@ XML_REF1_FILES = epmd.xml \
 	run_erl.xml \
 	start.xml
 
+ifeq ($(USE_ESOCK), yes)
+XML_REF3_ESOCK_EFILES = socket.xml
+XML_CHAPTER_ESOCK_EFILES = socket_usage.xml
+ESOCK_USE_SOCKET_XML=<xi:include href="socket.xml"\/>
+ESOCK_USE_SOCKET_SPECS_XML=<xi:include href="../specs/specs_socket.xml"/>
+ESOCK_USE_SOCKET_USAGE_XML=<xi:include href="socket_usage.xml"/>
+else
+XML_REF3_ESOCK_EFILES =
+XML_CHAPTER_ESOCK_EFILES =
+ESOCK_USE_SOCKET_XML =
+ESOCK_USE_SOCKET_SPECS_XML =
+ESOCK_USE_SOCKET_USAGE_XML =
+endif
+
 XML_REF3_EFILES = \
 	erl_prim_loader.xml \
 	erlang.xml \
+	erl_tracer.xml \
 	init.xml \
-	zlib.xml
+	persistent_term.xml \
+	atomics.xml \
+	counters.xml \
+	zlib.xml \
+	$(XML_REF3_ESOCK_EFILES)
 
 XML_REF3_FILES = \
+	$(XML_REF3_EFILES) \
 	driver_entry.xml \
 	erl_nif.xml \
-	erl_set_memory_block.xml \
 	erl_driver.xml \
-	erl_prim_loader.xml \
-	erlang.xml \
-	erts_alloc.xml  \
-	init.xml \
-	zlib.xml
+	erts_alloc.xml
 
 XML_PART_FILES = \
-	part.xml \
-	part_notes.xml \
-	part_notes_history.xml
+	part.xml internal.xml
+
+XML_INTERNAL_FILES = \
+	CarrierMigration.xml	\
+	ThreadProgress.xml	\
+	CodeLoading.xml		\
+	Tracing.xml		\
+	DelayedDealloc.xml	\
+	beam_makeops.xml	\
+	GarbageCollection.xml	\
+	PTables.xml		\
+	PortSignals.xml		\
+	ProcessManagementOptimizations.xml \
+	SuperCarrier.xml        \
+	CountingInstructions.xml
+
 
 XML_CHAPTER_FILES = \
+	introduction.xml \
 	tty.xml \
 	match_spec.xml \
 	crash_dump.xml \
 	alt_dist.xml \
+	alt_disco.xml \
 	driver.xml \
 	absform.xml \
 	inet_cfg.xml \
+	$(XML_CHAPTER_ESOCK_EFILES) \
 	erl_ext_dist.xml \
 	erl_dist_protocol.xml \
-	notes.xml \
-	notes_history.xml
+	communication.xml \
+	time_correction.xml \
+	notes.xml
 
 TOPDOCDIR=../../../doc
 
@@ -91,6 +124,8 @@ GIF_FILES = \
 XML_FILES = \
 	$(BOOK_FILES) $(XML_CHAPTER_FILES) \
 	$(XML_PART_FILES) $(XML_REF3_FILES) $(XML_REF1_FILES) $(XML_APPLICATION_FILES)
+
+XML_GEN_FILES = $(XML_INTERNAL_FILES:%=$(XMLDIR)/%)
 
 # ----------------------------------------------------
 
@@ -111,10 +146,16 @@ SPECS_FILES = $(XML_REF3_EFILES:%.xml=$(SPECDIR)/specs_%.xml)
 
 TOP_SPECS_FILE = specs.xml
 
+XML_FIGURE_DIR = $(XMLDIR)/figures
+
+INTERNAL_DOC_PNG_FILES = $(wildcard ../../emulator/internal_doc/figures/*.png)
+PNG_FILES = $(notdir $(INTERNAL_DOC_PNG_FILES))
+XMLDIR_PNG_FILES = $(PNG_FILES:%=$(XML_FIGURE_DIR)/%)
+
 # ----------------------------------------------------
-# FLAGS 
+# FLAGS
 # ----------------------------------------------------
-XML_FLAGS += 
+XML_FLAGS +=
 
 KERNEL_SRC=$(ERL_TOP)/lib/kernel/src
 KERNEL_INCLUDE=$(ERL_TOP)/lib/kernel/include
@@ -123,10 +164,15 @@ SPECS_FLAGS = -I$(KERNEL_SRC) -I$(KERNEL_INCLUDE)
 # ----------------------------------------------------
 # Targets
 # ----------------------------------------------------
+_create_dirs := $(shell mkdir -p $(XML_FIGURE_DIR))
+
 $(HTMLDIR)/%.gif: %.gif
 	$(INSTALL_DATA) $< $@
 
-docs: man pdf html $(INFO_FILE)
+$(XML_FIGURE_DIR)/%.png: ../../emulator/internal_doc/figures/%.png
+	$(INSTALL_DATA) $< $@
+
+docs: part ref_man specs figures man pdf html $(INFO_FILE)
 
 $(TOP_PDF_FILE): $(XML_FILES)
 
@@ -136,48 +182,67 @@ html: gifs $(HTML_REF_MAN_FILE)
 
 man: $(MAN1_FILES) $(MAN3_FILES)
 
+ref_man: ref_man.xml
+part: part.xml
+specs: specs.xml
+
 gifs: $(GIF_FILES:%=$(HTMLDIR)/%)
 
-$(INFO_FILE): $(INFO_FILE_SRC) ../../vsn.mk
+$(INFO_FILE): $(INFO_FILE_SRC) $(ERL_TOP)/make/$(TARGET)/otp.mk
 	sed -e 's;%RELEASE%;$(SYSTEM_VSN);' $(INFO_FILE_SRC) > $(INFO_FILE)
 
+figures: $(XMLDIR_PNG_FILES)
 
-debug opt: 
+debug opt:
+
+ldocs: xmllint local_docs
 
 clean:
 	rm -rf $(HTMLDIR)/*
+	rm -rf $(XMLDIR)
 	rm -f $(MAN1DIR)/*
 	rm -f $(MAN3DIR)/*
 	rm -f $(TOP_PDF_FILE) $(TOP_PDF_FILE:%.pdf=%.fo)
 	rm -f $(SPECDIR)/*
-	rm -f errs core *~ 
+	rm -f errs core *~
 
-$(SPECDIR)/specs_driver_entry.xml:
-	escript $(SPECS_EXTRACTOR) $(SPECS_FLAGS) \
-                -o$(dir $@) -module driver_entry
-$(SPECDIR)/specs_erl_nif.xml:
-	escript $(SPECS_EXTRACTOR) $(SPECS_FLAGS) \
-                -o$(dir $@) -module erl_nif
-$(SPECDIR)/specs_erl_set_memory_block.xml:
-	escript $(SPECS_EXTRACTOR) $(SPECS_FLAGS) \
-                -o$(dir $@) -module erl_set_memory_block
-$(SPECDIR)/specs_erl_driver.xml:
-	escript $(SPECS_EXTRACTOR) $(SPECS_FLAGS) \
-                -o$(dir $@) -module erl_driver
-$(SPECDIR)/specs_erts_alloc.xml:
-	escript $(SPECS_EXTRACTOR) $(SPECS_FLAGS) \
-                -o$(dir $@) -module erts_alloc
+$(SPECDIR)/specs_%.xml:
+	$(gen_verbose)escript $(SPECS_EXTRACTOR) $(SPECS_FLAGS) \
+                -o$(dir $@) -module $(patsubst $(SPECDIR)/specs_%.xml,%,$@)
+
+$(XMLDIR)/%.xml: ../../emulator/internal_doc/%.md $(ERL_TOP)/make/emd2exml
+	$(ERL_TOP)/make/emd2exml $< $@
+
+ref_man.xml: ref_man.xml.src
+	($(PERL) -p -e 's?%ESOCK_USE_SOCKET_XML%?$(ESOCK_USE_SOCKET_XML)?' \
+            $<) > $@
+
+part.xml: part.xml.src
+	($(PERL) -p -e 's?%ESOCK_USE_SOCKET_USAGE_XML%?$(ESOCK_USE_SOCKET_USAGE_XML)?' \
+            $<) > $@
+
+specs.xml: specs.xml.src
+	($(PERL) -p -e 's?%ESOCK_USE_SOCKET_SPECS_XML%?$(ESOCK_USE_SOCKET_SPECS_XML)?' \
+            $<) > $@
+
 
 # ----------------------------------------------------
 # Release Target
-# ---------------------------------------------------- 
+# ----------------------------------------------------
 include $(ERL_TOP)/make/otp_release_targets.mk
 
 release_docs_spec: docs
 	$(INSTALL_DIR) "$(RELSYSDIR)/doc/pdf"
 	$(INSTALL_DATA) $(TOP_PDF_FILE) "$(RELSYSDIR)/doc/pdf"
 	$(INSTALL_DIR) "$(RELSYSDIR)/doc/html"
+	$(INSTALL_DIR) "$(RELSYSDIR)/doc/html/figures"
 	$(INSTALL_DATA) $(HTMLDIR)/* \
+		"$(RELSYSDIR)/doc/html"
+	$(INSTALL_DATA) $(XMLDIR)/figures/* \
+		"$(RELSYSDIR)/doc/html/figures"
+	$(INSTALL_DATA) $(ERL_TOP)/erts/example/time_compat.erl \
+		"$(RELSYSDIR)/doc/html"
+	$(INSTALL_DATA) $(ERL_TOP)/lib/kernel/examples/gen_tcp_dist/src/gen_tcp_dist.erl \
 		"$(RELSYSDIR)/doc/html"
 	$(INSTALL_DATA) $(INFO_FILE) "$(RELSYSDIR)"
 	$(INSTALL_DIR) "$(RELEASE_PATH)/man/man3"

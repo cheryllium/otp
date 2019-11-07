@@ -1,18 +1,19 @@
 %% 
 %% %CopyrightBegin%
 %% 
-%% Copyright Ericsson AB 1996-2011. All Rights Reserved.
+%% Copyright Ericsson AB 1996-2019. All Rights Reserved.
 %% 
-%% The contents of this file are subject to the Erlang Public License,
-%% Version 1.1, (the "License"); you may not use this file except in
-%% compliance with the License. You should have received a copy of the
-%% Erlang Public License along with this software. If not, it can be
-%% retrieved online at http://www.erlang.org/.
-%% 
-%% Software distributed under the License is distributed on an "AS IS"
-%% basis, WITHOUT WARRANTY OF ANY KIND, either express or implied. See
-%% the License for the specific language governing rights and limitations
-%% under the License.
+%% Licensed under the Apache License, Version 2.0 (the "License");
+%% you may not use this file except in compliance with the License.
+%% You may obtain a copy of the License at
+%%
+%%     http://www.apache.org/licenses/LICENSE-2.0
+%%
+%% Unless required by applicable law or agreed to in writing, software
+%% distributed under the License is distributed on an "AS IS" BASIS,
+%% WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+%% See the License for the specific language governing permissions and
+%% limitations under the License.
 %% 
 %% %CopyrightEnd%
 %% 
@@ -43,6 +44,7 @@
 	 ip/1, ip/2, 
 	 is_auth/1,
 	 is_BitString/1,
+	 is_crypto_supported/1, 
 	 is_oid/1,
 	 is_priv/1,
 	 is_reportable/1,
@@ -62,8 +64,18 @@
 	 strip_extension_from_filename/2, 
 	 str_xor/2,
 	 time/3,
-	 
-	 verify_behaviour/2
+
+	 verify_behaviour/2,
+
+	 %% These are used both for debugging (verbosity printouts)
+         %% and other such "utility" operations.
+         format_timestamp/1, format_timestamp/2, 
+         format_short_timestamp/1, format_short_timestamp/2, 
+         format_long_timestamp/1, format_long_timestamp/2,
+         formated_timestamp/0, 
+         formated_short_timestamp/0, 
+         formated_long_timestamp/0
+
 	]).
 
 
@@ -100,29 +112,132 @@ sleep(Time) ->
 %% Returns time in ms = sec/1000
 % now() -> now(ms).
 now(ms) ->
-    Now = erlang:now(),
-    element(1,Now)*1000000000+
-	element(2,Now)*1000+
-	(element(3,Now) div 1000);
+    erlang:monotonic_time(milli_seconds);
+
 %% Returns time in cs = sec/100
 now(cs) ->
-    Now = erlang:now(),
-    element(1,Now)*100000000+
-        element(2,Now)*100+
-	(element(3,Now) div 10000);
+    erlang:monotonic_time(100);
+
 now(sec) ->
-    Now = erlang:now(),
-    element(1,Now)*1000000+
-        element(2,Now)+
-	(element(3,Now) div 1000000).
+    erlang:monotonic_time(seconds).
     
+
+
+%% ---------------------------------------------------------------------------
+%% # formated_timstamp/0,     formated_timstamp/1
+%% # format_short_timstamp/0, format_short_timstamp/1
+%% # format_long_timstamp/0,  format_long_timstamp/1
+%% 
+%% Create a formatted timestamp. Short means that it will not include 
+%% the date in the formatted timestamp. Also it will only include millis.
+%% ---------------------------------------------------------------------------
+
+formated_timestamp() ->
+    formated_long_timestamp().
+
+formated_short_timestamp() ->
+    format_short_timestamp(os:timestamp()).
+
+formated_long_timestamp() ->
+    format_long_timestamp(os:timestamp()).
+
+
+%% ---------------------------------------------------------------------------
+%% # format_timstamp/1, format_timstamp/2
+%% # format_short_timstamp/1, format_short_timstamp/2
+%% # format_long_timstamp/1, format_long_timstamp/2
+%% 
+%% Formats the provided timestamp. Short means that it will not include 
+%% the date in the formatted timestamp.
+%% ---------------------------------------------------------------------------
+
+-spec format_timestamp(Now :: erlang:timestamp()) ->
+    string().
+
+format_timestamp(Now) ->
+    format_long_timestamp(Now).
+
+-spec format_short_timestamp(Now :: erlang:timestamp()) ->
+    string().
+
+format_short_timestamp(Now) ->
+    N2T = fun(N) -> calendar:now_to_local_time(N) end,
+    format_timestamp(short, Now, N2T).
+
+-spec format_long_timestamp(Now :: erlang:timestamp()) ->
+    string().
+
+format_long_timestamp(Now) ->
+    N2T = fun(N) -> calendar:now_to_local_time(N) end,
+    format_timestamp(long, Now, N2T).
+
+-spec format_timestamp(Now :: erlang:timestamp(), 
+                       N2T :: function()) ->
+    string().
+
+format_timestamp(Now, N2T) when is_tuple(Now) andalso is_function(N2T) ->
+    format_long_timestamp(Now, N2T).
+
+-spec format_short_timestamp(Now :: erlang:timestamp(), 
+                             N2T :: function()) ->
+    string().
+
+format_short_timestamp(Now, N2T) when is_tuple(Now) andalso is_function(N2T) ->
+    format_timestamp(short, Now, N2T).
+
+-spec format_long_timestamp(Now :: erlang:timestamp(), 
+                            N2T :: function()) ->
+    string().
+
+format_long_timestamp(Now, N2T) when is_tuple(Now) andalso is_function(N2T) ->
+    format_timestamp(long, Now, N2T).
+
+format_timestamp(Format, {_N1, _N2, N3} = Now, N2T) ->
+    {Date, Time} = N2T(Now),
+    do_format_timestamp(Format, Date, Time, N3).
+
+do_format_timestamp(short, _Date, Time, N3) ->
+    do_format_short_timestamp(Time, N3);
+do_format_timestamp(long, Date, Time, N3) ->
+    do_format_long_timestamp(Date, Time, N3).
+    
+do_format_long_timestamp(Date, Time, N3) ->
+    {YYYY,MM,DD}   = Date,
+    {Hour,Min,Sec} = Time,
+    FormatDate = 
+        io_lib:format("~.4w-~.2.0w-~.2.0w ~.2.0w:~.2.0w:~.2.0w.~.3.0w",
+                      [YYYY, MM, DD, Hour, Min, Sec, N3 div 1000]),  
+    lists:flatten(FormatDate).
+
+do_format_short_timestamp(Time, N3) ->
+    {Hour,Min,Sec} = Time,
+    FormatDate = 
+        io_lib:format("~.2.0w:~.2.0w:~.2.0w.~.3.0w", 
+                      [Hour, Min, Sec, N3 div 1000]),  
+    lists:flatten(FormatDate).
+
+
+
+is_crypto_supported(Alg) ->
+    %% The 'try catch' handles the case when 'crypto' is
+    %% not present in the system (or not started).
+    try
+	begin
+	    Supported = crypto:supports(),
+	    Hashs     = proplists:get_value(hashs,   Supported),
+	    Ciphers   = proplists:get_value(ciphers, Supported),
+	    lists:member(Alg, Hashs ++ Ciphers)
+	end
+    catch
+	_:_ ->
+	    false
+    end.
 
 is_string([]) -> true;
 is_string([Tkn | Str]) 
   when is_integer(Tkn) andalso (Tkn >= 0) andalso (Tkn =< 255) ->
     is_string(Str);
 is_string(_) -> false.
-
 
 is_oid([E1, E2| Rest]) 
   when (length(Rest) =< 126) andalso (E1 *40 + E2 =< 255) ->
@@ -464,7 +579,3 @@ format_val('OBJECT IDENTIFIER', _, Val, MiniMib) ->
     io_lib:format("~w", [NVal]);
 format_val(_, _, Val, _MiniMib) ->
     io_lib:format("~p", [Val]).
-    
-
-
-

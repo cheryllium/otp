@@ -1,18 +1,19 @@
 %% 
 %% %CopyrightBegin%
 %% 
-%% Copyright Ericsson AB 1997-2012. All Rights Reserved.
+%% Copyright Ericsson AB 1997-2016. All Rights Reserved.
 %% 
-%% The contents of this file are subject to the Erlang Public License,
-%% Version 1.1, (the "License"); you may not use this file except in
-%% compliance with the License. You should have received a copy of the
-%% Erlang Public License along with this software. If not, it can be
-%% retrieved online at http://www.erlang.org/.
-%% 
-%% Software distributed under the License is distributed on an "AS IS"
-%% basis, WITHOUT WARRANTY OF ANY KIND, either express or implied. See
-%% the License for the specific language governing rights and limitations
-%% under the License.
+%% Licensed under the Apache License, Version 2.0 (the "License");
+%% you may not use this file except in compliance with the License.
+%% You may obtain a copy of the License at
+%%
+%%     http://www.apache.org/licenses/LICENSE-2.0
+%%
+%% Unless required by applicable law or agreed to in writing, software
+%% distributed under the License is distributed on an "AS IS" BASIS,
+%% WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+%% See the License for the specific language governing permissions and
+%% limitations under the License.
 %% 
 %% %CopyrightEnd%
 %% 
@@ -46,7 +47,40 @@ init_per_suite(Config) when is_list(Config) ->
     ?DBG("init_per_suite -> entry with"
 	 "~n   Config: ~p", [Config]),
 
-    Config.
+    %% We have some crap machines that causes random test case failures
+    %% for no obvious reason. So, attempt to identify those without actually
+    %% checking for the host name...
+    %% We have two "machines" we are checking for. Both are old installations
+    %% running on really slow VMs (the host machines are old and tired).
+    LinuxVersionVerify =
+        fun(V) when (V > {3,6,11}) ->
+                false; % OK - No skip
+           (V) when (V =:= {3,6,11}) ->
+                case string:trim(os:cmd("cat /etc/issue")) of
+                    "Fedora release 16 " ++ _ -> % Stone age Fedora => Skip
+                        true;
+                    _ ->
+                        false
+                end;
+           (V) when (V > {2,6,24}) ->
+                false; % OK - No skip
+           (_) ->
+                %% We are specifically checking for
+                %% a *really* old gento...
+                case string:find(string:strip(os:cmd("uname -a")), "gentoo") of
+                    nomatch ->
+                        false;
+                    _ -> % Stone age gentoo => Skip
+                        true
+                end
+        end,
+    COND = [{unix, [{linux, LinuxVersionVerify}]}],
+    case ?OS_BASED_SKIP(COND) of
+        true ->
+            {skip, "Unstable host and/or os (or combo thererof)"};
+        false ->
+            Config
+    end.
 
 end_per_suite(Config) when is_list(Config) ->
 
@@ -80,7 +114,9 @@ groups() ->
 		     {group, note_store_test}]},
      {agent, [],    [{group, mibs_test}, 
 		     {group, nfilter_test},
-		     {group, agent_test}]},
+             {group, agent_test},
+             {group, agent_conf_test},
+		     {group, snmpnet_test}]},
      {manager, [],  [{group, manager_config_test},
 		     {group, manager_user_test}, 
 		     {group, manager_test}]},
@@ -95,6 +131,8 @@ groups() ->
      {mibs_test,           [], [{snmp_agent_mibs_test,     all}]},
      {nfilter_test,        [], [{snmp_agent_nfilter_test,  all}]},
      {agent_test,          [], [{snmp_agent_test,          all}]},
+     {agent_conf_test,     [], [{snmp_agent_conf_test,     all}]},
+     {snmpnet_test,        [], [{snmp_to_snmpnet_SUITE,    all}]},
      {manager_config_test, [], [{snmp_manager_config_test, all}]},
      {manager_user_test,   [], [{snmp_manager_user_test,   all}]},
      {manager_test,        [], [{snmp_manager_test,        all}]}
@@ -107,15 +145,18 @@ init_per_group(GroupName, Config0) ->
 	 "~n   GroupName: ~p"
 	 "~n   Config0:   ~p", [GroupName, Config0]),
 
-    %% Group name is not really the suite name
-    %% (but it is a good enough approximation), 
-    %% but it does not matter since we only need 
-    %% it to be unique. 
-    snmp_test_lib:init_suite_top_dir(GroupName, Config0).
-    
+    case GroupName of
+	snmpnet_test ->
+	    Config0;
+	_ ->
+	    %% Group name is not really the suite name
+	    %% (but it is a good enough approximation),
+	    %% but it does not matter since we only need
+	    %% it to be unique.
+	    snmp_test_lib:init_suite_top_dir(GroupName, Config0)
+    end.
 
+end_per_group(snmpnet_test, Config) ->
+    Config;
 end_per_group(_GroupName, Config) ->
     lists:keydelete(snmp_suite_top_dir, 1, Config).
-
-
-

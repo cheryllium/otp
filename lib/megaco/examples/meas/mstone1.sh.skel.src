@@ -3,18 +3,19 @@
 #
 # %CopyrightBegin%
 # 
-# Copyright Ericsson AB 2007-2012. All Rights Reserved.
+# Copyright Ericsson AB 2007-2019. All Rights Reserved.
 # 
-# The contents of this file are subject to the Erlang Public License,
-# Version 1.1, (the "License"); you may not use this file except in
-# compliance with the License. You should have received a copy of the
-# Erlang Public License along with this software. If not, it can be
-# retrieved online at http://www.erlang.org/.
-# 
-# Software distributed under the License is distributed on an "AS IS"
-# basis, WITHOUT WARRANTY OF ANY KIND, either express or implied. See
-# the License for the specific language governing rights and limitations
-# under the License.
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
 # 
 # %CopyrightEnd%
 
@@ -38,6 +39,13 @@ Options:
                         default is time_test
  -h <num>               default process heap size
  -a <num>               async thread pool size (default is 0)
+ -t <run time>          The runtime of the test
+                        Format: <value>[unit], where unit can be:
+                           s: seconds
+                           m: minutes (default)
+                           h: hours
+                        If no unit is provided, minutes is assumed.
+                        defaults to 10 minutes
  -f <factor>            normally the test is run with 16 processes 
                         (factor 1), one for each codec config. The test 
                         can however be run with other factors, e.g. 
@@ -77,6 +85,7 @@ STARTF="start"
 FACTOR=""
 MSG_PACK=time_test
 SBT="+sbt tnnps"
+RT=10
 
 while test $# != 0; do
     # echo "DBG: Value = $1"
@@ -95,6 +104,10 @@ while test $# != 0; do
 
         -a)
             ATP="+A $2";
+            shift ; shift ;;
+
+        -t)
+            RT="$2";
             shift ; shift ;;
 
         -d)
@@ -161,23 +174,17 @@ done
 
 if [ $TYPE = factor ]; then
 
-    MSTONE="-s $MODULE $STARTF $MSG_PACK $FACTOR"
+    MSTONE="-s $MODULE $STARTF $MSG_PACK $RT $FACTOR"
 
-    # SCHEDS="no_smp 01 02 04"
-    # SCHEDS="no_smp 01 02 04 08"
-    # SCHEDS="no_smp 01 02 04 08 16"
-    # SCHEDS="no_smp 01 02 04 08 16 32"
-    # SCHEDS="no_smp 01 02 04 08 16 32 64"
-    SCHEDS="no_smp 01 02 03 04 05 06 07 08"
+    # SCHEDS="01 02 04"
+    # SCHEDS="01 02 04 08"
+    # SCHEDS="01 02 04 08 16"
+    # SCHEDS="01 02 04 08 16 32"
+    # SCHEDS="01 02 04 08 16 32 64"
+    SCHEDS="01 02 03 04 05 06 07 08"
 
     for i in `echo $SCHEDS`; do
         case $i in
-            no_smp)
-                SMP_INFO="No SMP"
-                SMP_OPTS="-smp disable" # THIS IS THE R12B WAY TO DISABLE SMP
-                LOG="mstone1-f$FACTOR-s00.log"
-                ;;
-
             01)
                 SMP_INFO="SMP: 1 scheduler"
                 SMP_OPTS="-smp +S $i"
@@ -213,7 +220,7 @@ if [ $TYPE = factor ]; then
 
 elif [ $TYPE = sched ]; then
 
-    MSTONE="-s $MODULE $STARTF $MSG_PACK"
+    MSTONE="-s $MODULE $STARTF $MSG_PACK $RT"
 
     # FACTORS="01 02 03 04"
     # FACTORS="01 02 03 04 05 06 07 08 09 10"
@@ -221,10 +228,6 @@ elif [ $TYPE = sched ]; then
     # FACTORS="001 010 100"
 
     case $SCHED in
-        no_smp)
-            SMP_OPTS="-smp disable" # THIS IS THE R12B WAY TO DISABLE SMP
-            ;;
-
         *)
             SMP_OPTS="-smp +S $SCHED"
             ;;

@@ -1,18 +1,19 @@
 %%
 %% %CopyrightBegin%
 %% 
-%% Copyright Ericsson AB 2006-2012. All Rights Reserved.
+%% Copyright Ericsson AB 2006-2019. All Rights Reserved.
 %% 
-%% The contents of this file are subject to the Erlang Public License,
-%% Version 1.1, (the "License"); you may not use this file except in
-%% compliance with the License. You should have received a copy of the
-%% Erlang Public License along with this software. If not, it can be
-%% retrieved online at http://www.erlang.org/.
-%% 
-%% Software distributed under the License is distributed on an "AS IS"
-%% basis, WITHOUT WARRANTY OF ANY KIND, either express or implied. See
-%% the License for the specific language governing rights and limitations
-%% under the License.
+%% Licensed under the Apache License, Version 2.0 (the "License");
+%% you may not use this file except in compliance with the License.
+%% You may obtain a copy of the License at
+%%
+%%     http://www.apache.org/licenses/LICENSE-2.0
+%%
+%% Unless required by applicable law or agreed to in writing, software
+%% distributed under the License is distributed on an "AS IS" BASIS,
+%% WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+%% See the License for the specific language governing permissions and
+%% limitations under the License.
 %% 
 %% %CopyrightEnd%
 %%
@@ -200,10 +201,10 @@ display_worker_result([{Mod, Conf, Cnt}|Res]) ->
     io:format("~s: ~w~n", [image_of(Mod, Conf), Cnt]),
     display_worker_result(Res).
 
-image_of(megaco_per_bin_encoder, Conf) ->
-    bin_image("per_bin", Conf);
-image_of(megaco_ber_bin_encoder, Conf) ->
-    bin_image("ber_bin", Conf);
+image_of(megaco_per_encoder, Conf) ->
+    bin_image("per", Conf);
+image_of(megaco_ber_encoder, Conf) ->
+    bin_image("ber", Conf);
 image_of(megaco_pretty_text_encoder, Conf) ->
     text_image("pretty", Conf);
 image_of(megaco_compact_text_encoder, Conf) ->

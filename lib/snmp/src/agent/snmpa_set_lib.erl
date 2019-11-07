@@ -1,18 +1,19 @@
 %%
 %% %CopyrightBegin%
 %% 
-%% Copyright Ericsson AB 1996-2011. All Rights Reserved.
+%% Copyright Ericsson AB 1996-2016. All Rights Reserved.
 %% 
-%% The contents of this file are subject to the Erlang Public License,
-%% Version 1.1, (the "License"); you may not use this file except in
-%% compliance with the License. You should have received a copy of the
-%% Erlang Public License along with this software. If not, it can be
-%% retrieved online at http://www.erlang.org/.
-%% 
-%% Software distributed under the License is distributed on an "AS IS"
-%% basis, WITHOUT WARRANTY OF ANY KIND, either express or implied. See
-%% the License for the specific language governing rights and limitations
-%% under the License.
+%% Licensed under the Apache License, Version 2.0 (the "License");
+%% you may not use this file except in compliance with the License.
+%% You may obtain a copy of the License at
+%%
+%%     http://www.apache.org/licenses/LICENSE-2.0
+%%
+%% Unless required by applicable law or agreed to in writing, software
+%% distributed under the License is distributed on an "AS IS" BASIS,
+%% WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+%% See the License for the specific language governing permissions and
+%% limitations under the License.
 %% 
 %% %CopyrightEnd%
 %%
@@ -45,9 +46,9 @@
 %%*  6) IF value is outside the acceptable range THEN wrongValue.
 %%   7) IF variable does not exist and could not ever be created
 %%      THEN noCreation.
-%%   8) IF variable can not be created now THEN inconsistentName.
-%%   9) IF value can not be set now THEN inconsistentValue.
-%%*  9) IF instances of the variable can not be modified THEN notWritable.
+%%   8) IF variable cannot be created now THEN inconsistentName.
+%%   9) IF value cannot be set now THEN inconsistentValue.
+%%*  9) IF instances of the variable cannot be modified THEN notWritable.
 %%  10) IF an unavailable resource is needed THEN resourceUnavailable.
 %%  11) IF any other error THEN genErr.
 %%  12) Otherwise ok!
@@ -389,7 +390,7 @@ dbg_apply(M,F,A) ->
         {'EXIT', {function_clause, [{M, F, A} | _]}} ->
             {'EXIT', {hook_function_clause, {M, F, A}}};
 
-						% XYZ: Older format for compatibility
+        %% XYZ: Older format for compatibility
         {'EXIT', {undef, {M, F, A}}} ->
             {'EXIT', {hook_undef, {M, F, A}}};
         {'EXIT', {function_clause, {M, F, A}}} ->

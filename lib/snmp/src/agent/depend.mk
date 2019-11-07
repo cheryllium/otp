@@ -2,18 +2,19 @@
 
 # %CopyrightBegin%
 # 
-# Copyright Ericsson AB 2004-2012. All Rights Reserved.
+# Copyright Ericsson AB 2004-2019. All Rights Reserved.
 # 
-# The contents of this file are subject to the Erlang Public License,
-# Version 1.1, (the "License"); you may not use this file except in
-# compliance with the License. You should have received a copy of the
-# Erlang Public License along with this software. If not, it can be
-# retrieved online at http://www.erlang.org/.
-# 
-# Software distributed under the License is distributed on an "AS IS"
-# basis, WITHOUT WARRANTY OF ANY KIND, either express or implied. See
-# the License for the specific language governing rights and limitations
-# under the License.
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
 # 
 # %CopyrightEnd%
 
@@ -22,6 +23,9 @@ $(EBIN)/snmpa_authentication_service.$(EMULATOR): \
 
 $(EBIN)/snmpa_error_report.$(EMULATOR): \
 	snmpa_error_report.erl
+
+$(EBIN)/snmpa_get_mechanism.$(EMULATOR): \
+	snmpa_get_mechanism.erl
 
 $(EBIN)/snmpa_network_interface.$(EMULATOR): \
 	snmpa_network_interface.erl
@@ -77,8 +81,18 @@ $(EBIN)/snmpa_error_logger.$(EMULATOR): \
 	snmpa_error_report.erl \
 	snmpa_error_logger.erl
 
-$(EBIN)/snmpa_general_db.$(EMULATOR): \
-	snmpa_general_db.erl \
+$(EBIN)/snmpa_set.$(EMULATOR): \
+	snmpa_set_mechanism.erl \
+	snmpa_set.erl \
+	../misc/snmp_verbosity.hrl
+
+$(EBIN)/snmpa_get.$(EMULATOR): \
+	snmpa_get_mechanism.erl \
+	snmpa_get.erl \
+	../misc/snmp_verbosity.hrl
+
+$(EBIN)/snmpa_get_lib.$(EMULATOR): \
+	snmpa_get_lib.erl \
 	../misc/snmp_verbosity.hrl
 
 $(EBIN)/snmpa_local_db.$(EMULATOR): \
@@ -88,6 +102,18 @@ $(EBIN)/snmpa_local_db.$(EMULATOR): \
 	../../include/snmp_types.hrl \
 	../../include/STANDARD-MIB.hrl
 
+$(EBIN)/snmpa_mib_storage.$(EMULATOR): \
+	snmpa_mib_storage.erl
+
+$(EBIN)/snmpa_mib_storage_ets.$(EMULATOR): \
+	snmpa_mib_storage_ets.erl
+
+$(EBIN)/snmpa_mib_storage_dets.$(EMULATOR): \
+	snmpa_mib_storage_dets.erl
+
+$(EBIN)/snmpa_mib_storage_mnesia.$(EMULATOR): \
+	snmpa_mib_storage_mnesia.erl
+
 $(EBIN)/snmpa_mib.$(EMULATOR): \
 	snmpa_mib.erl \
 	../misc/snmp_debug.hrl \
@@ -96,6 +122,10 @@ $(EBIN)/snmpa_mib.$(EMULATOR): \
 
 $(EBIN)/snmpa_mib_data.$(EMULATOR): \
 	snmpa_mib_data.erl \
+	../../include/snmp_types.hrl
+
+$(EBIN)/snmpa_mib_data_tttn.$(EMULATOR): \
+	snmpa_mib_data_tttn.erl \
 	../misc/snmp_debug.hrl \
 	../misc/snmp_verbosity.hrl \
 	../../include/snmp_types.hrl

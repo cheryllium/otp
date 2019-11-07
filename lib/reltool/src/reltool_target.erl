@@ -1,18 +1,19 @@
 %%
 %% %CopyrightBegin%
 %%
-%% Copyright Ericsson AB 2009-2012. All Rights Reserved.
+%% Copyright Ericsson AB 2009-2018. All Rights Reserved.
 %%
-%% The contents of this file are subject to the Erlang Public License,
-%% Version 1.1, (the "License"); you may not use this file except in
-%% compliance with the License. You should have received a copy of the
-%% Erlang Public License along with this software. If not, it can be
-%% retrieved online at http://www.erlang.org/.
+%% Licensed under the Apache License, Version 2.0 (the "License");
+%% you may not use this file except in compliance with the License.
+%% You may obtain a copy of the License at
 %%
-%% Software distributed under the License is distributed on an "AS IS"
-%% basis, WITHOUT WARRANTY OF ANY KIND, either express or implied. See
-%% the License for the specific language governing rights and limitations
-%% under the License.
+%%     http://www.apache.org/licenses/LICENSE-2.0
+%%
+%% Unless required by applicable law or agreed to in writing, software
+%% distributed under the License is distributed on an "AS IS" BASIS,
+%% WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+%% See the License for the specific language governing permissions and
+%% limitations under the License.
 %%
 %% %CopyrightEnd%
 
@@ -54,7 +55,7 @@ mandatory_modules() ->
 kernel_processes(KernelApp) ->
     [
      {kernelProcess, heart, {heart, start, []}},
-     {kernelProcess, error_logger , {error_logger, start_link, []}},
+     {kernelProcess, logger , {logger_server, start_link, []}},
      {kernelProcess,
       application_controller,
       {application_controller, start, [KernelApp]}}
@@ -107,12 +108,8 @@ do_gen_config(#sys{root_dir          	= RootDir,
 		     emit(incl_cond, A#app.incl_cond, undefined, InclDefs)}
 		    || A <- Apps, A#app.is_escript],
     DefaultRels = reltool_utils:default_rels(),
-    RelsItems =
-	[{rel, R#rel.name, R#rel.vsn, do_gen_config(R, InclDefs)} ||
-	    R <- Rels],
-    DefaultRelsItems =
-	[{rel, R#rel.name, R#rel.vsn, do_gen_config(R, InclDefs)} ||
-	    R <- DefaultRels],
+    RelsItems = [do_gen_config(R, InclDefs) || R <- Rels],
+    DefaultRelsItems = [do_gen_config(R, InclDefs) || R <- DefaultRels],
     RelsItems2 =
 	case InclDefs of
 	    true  -> RelsItems;
@@ -200,11 +197,20 @@ do_gen_config(#mod{name = Name,
 	_ ->
 	    []
     end;
-do_gen_config(#rel{name = _Name,
-		   vsn = _Vsn,
-		   rel_apps = RelApps},
-	      InclDefs) ->
-    [do_gen_config(RA, InclDefs) || RA <- RelApps];
+do_gen_config(#rel{name = Name,
+                   vsn = Vsn,
+                   rel_apps = RelApps,
+                   load_dot_erlang = LoadDotErlang},
+              InclDefs) ->
+    RelAppsConfig = [do_gen_config(RA, InclDefs) || RA <- RelApps],
+    if
+        LoadDotErlang =:= false ->
+            {rel, Name, Vsn, RelAppsConfig, [{load_dot_erlang, false}]};
+        InclDefs =:= true ->
+            {rel, Name, Vsn, RelAppsConfig, [{load_dot_erlang, true}]};
+        LoadDotErlang =:= true ->
+            {rel, Name, Vsn, RelAppsConfig}
+    end;
 do_gen_config(#rel_app{name = Name,
 		       app_type = Type,
 		       incl_apps = InclApps},
@@ -296,7 +302,7 @@ do_gen_rel(#rel{name = RelName, vsn = RelVsn, rel_apps = RelApps},
 	     {ErtsName, Erts#app.vsn},
 	     [strip_rel_info(App, RelApps) || App <- MergedApps]};
 	false ->
-	    reltool_utils:throw_error("Mandatory application ~p is "
+	    reltool_utils:throw_error("Mandatory application ~w is "
 				      "not included",
                                       [ErtsName])
     end.
@@ -333,7 +339,9 @@ merge_apps(#rel{name = RelName,
 		       A#app.name =/= ?MISSING_APP_NAME,
 		       not lists:keymember(A#app.name, #app.name, MergedApps2)],
     MergedApps3 = do_merge_apps(RelName, Embedded, Apps, EmbAppType, MergedApps2),
-    sort_apps(lists:reverse(MergedApps3)).
+    RevMerged = lists:reverse(MergedApps3),
+    MergedSortedUsedAndIncs = sort_used_and_incl_apps(RevMerged,RevMerged),
+    sort_apps(MergedSortedUsedAndIncs).
 
 do_merge_apps(RelName, [#rel_app{name = Name} = RA | RelApps], Apps, RelAppType, Acc) ->
     case is_already_merged(Name, RelApps, Acc) of
@@ -342,9 +350,11 @@ do_merge_apps(RelName, [#rel_app{name = Name} = RA | RelApps], Apps, RelAppType,
 	false ->
 	    {value, App} = lists:keysearch(Name, #app.name, Apps),
 	    MergedApp = merge_app(RelName, RA, RelAppType, App),
-	    MoreNames = (MergedApp#app.info)#app_info.applications,
+	    ReqNames = (MergedApp#app.info)#app_info.applications,
+	    IncNames = (MergedApp#app.info)#app_info.incl_apps,
 	    Acc2 = [MergedApp | Acc],
-	    do_merge_apps(RelName, MoreNames ++ RelApps, Apps, RelAppType, Acc2)
+	    do_merge_apps(RelName, ReqNames ++ IncNames ++ RelApps,
+			  Apps, RelAppType, Acc2)
     end;
 do_merge_apps(RelName, [Name | RelApps], Apps, RelAppType, Acc) ->
   case is_already_merged(Name, RelApps, Acc) of
@@ -379,8 +389,8 @@ merge_app(RelName,
         [] ->
 	    App#app{app_type = Type2, info = Info#app_info{incl_apps = InclApps}};
         BadIncl ->
-            reltool_utils:throw_error("~p: These applications are "
-				      "used by release ~s but are "
+            reltool_utils:throw_error("~w: These applications are "
+				      "used by release ~ts but are "
 				      "missing as included_applications "
 				      "in the app file: ~p",
                                       [Name, RelName, BadIncl])
@@ -419,7 +429,7 @@ gen_script(Rel, Sys, PathFlag, Variables) ->
             {error, Text}
     end.
 
-do_gen_script(#rel{name = RelName, vsn = RelVsn},
+do_gen_script(#rel{name = RelName, vsn = RelVsn, load_dot_erlang=LoadErlangRc},
               #sys{apps = Apps},
 	      MergedApps,
               PathFlag,
@@ -469,42 +479,73 @@ do_gen_script(#rel{name = RelName, vsn = RelVsn},
              Type =/= none,
              Type =/= load,
              not lists:member(Name, InclApps)],
-
          %% Apply user specific customizations
-         {apply, {c, erlangrc, []}},
+         case LoadErlangRc of
+             true -> {apply, {c, erlangrc, []}};
+             false -> []
+         end,
          {progress, started}
         ],
     {ok, {script, {RelName, RelVsn}, lists:flatten(DeepList)}}.
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-load_app_mods(#app{mods = Mods} = App, Mand, PathFlag, Variables) ->
+load_app_mods(#app{mods = Mods0} = App, Mand, PathFlag, Variables) ->
     Path = cr_path(App, PathFlag, Variables),
-    PartNames =
-        lists:sort([{packages:split(M),M} ||
-                       #mod{name = M, is_included=true} <- Mods,
-                       not lists:member(M, Mand)]),
-    SplitMods =
-        lists:foldl(
-          fun({Parts,M}, [{Last, Acc}|Rest]) ->
-                  [_|Tail] = lists:reverse(Parts),
-                  case lists:reverse(Tail) of
-                      Subs when Subs == Last ->
-                          [{Last,[M|Acc]}|Rest];
-                      Subs ->
-                          [{Subs, [M]}|[{Last,Acc}|Rest]]
-                  end
-          end,
-          [{[],
-            []}],
-          PartNames),
-    lists:foldl(
-      fun({Subs,Ms}, Cmds) ->
-              [{path, [filename:join([Path | Subs])]},
-               {primLoad, lists:sort(Ms)} | Cmds]
-      end,
-      [],
-      SplitMods).
+    Mods = [M || #mod{name = M, is_included=true} <- Mods0,
+		 not lists:member(M, Mand)],
+    [{path, [filename:join([Path])]},
+     {primLoad, lists:sort(Mods)}].
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%% sort_used_and_incl_apps(Apps, OrderedApps) -> Apps
+%%   Apps = [#app{}]
+%%   OrderedApps = [#app{}]
+%%
+%% OTP-4121, OTP-9984
+%% (Tickets are written for systools, but needs to be implemented here
+%% as well.)
+%% Make sure that used and included applications are given in the same
+%% order as in the release resource file (.rel). Otherwise load and
+%% start instructions in the boot script, and consequently release
+%% upgrade instructions in relup, may end up in the wrong order.
+
+sort_used_and_incl_apps([#app{info=Info} = App|Apps], OrderedApps) ->
+    Incls2 =
+	case Info#app_info.incl_apps of
+	    Incls when length(Incls)>1 ->
+		sort_appl_list(Incls, OrderedApps);
+	    Incls ->
+		Incls
+	end,
+    Uses2 =
+	case Info#app_info.applications of
+	    Uses when length(Uses)>1 ->
+		sort_appl_list(Uses, OrderedApps);
+	    Uses ->
+		Uses
+	end,
+    App2 = App#app{info=Info#app_info{incl_apps=Incls2, applications=Uses2}},
+    [App2|sort_used_and_incl_apps(Apps, OrderedApps)];
+sort_used_and_incl_apps([], _OrderedApps) ->
+    [].
+
+sort_appl_list(List, Order) ->
+    IndexedList = find_pos(List, Order),
+    SortedIndexedList = lists:keysort(1, IndexedList),
+    lists:map(fun({_Index,Name}) -> Name end, SortedIndexedList).
+
+find_pos([Name|Incs], OrderedApps) ->
+    [find_pos(1, Name, OrderedApps)|find_pos(Incs, OrderedApps)];
+find_pos([], _OrderedApps) ->
+    [].
+
+find_pos(N, Name, [#app{name=Name}|_OrderedApps]) ->
+    {N, Name};
+find_pos(N, Name, [_OtherAppl|OrderedApps]) ->
+    find_pos(N+1, Name, OrderedApps).
+
+
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %% Function: sort_apps(Apps) -> {ok, Apps'} | throw({error, Error})
@@ -753,15 +794,19 @@ do_spec_rel_files(#rel{name = RelName} = Rel,  Sys) ->
     {ok, BootBin} = gen_boot(Script),
     Date = date(),
     Time = time(),
-    RelIoList = io_lib:format("%% rel generated at ~w ~w\n~p.\n\n",
+    RelIoList = io_lib:format("%% rel generated at ~w ~w\n~tp.\n\n",
                               [Date, Time, GenRel]),
-    ScriptIoList = io_lib:format("%% script generated at ~w ~w\n~p.\n\n",
+    ScriptIoList = io_lib:format("%% script generated at ~w ~w\n~tp.\n\n",
                                  [Date, Time, Script]),
     [
-     {write_file, RelFile, RelIoList},
-     {write_file, ScriptFile, ScriptIoList},
+     {write_file, RelFile, to_utf8_bin_with_enc_comment(RelIoList)},
+     {write_file, ScriptFile, to_utf8_bin_with_enc_comment(ScriptIoList)},
      {write_file, BootFile, BootBin}
     ].
+
+to_utf8_bin_with_enc_comment(IoList) when is_list(IoList) ->
+    unicode:characters_to_binary("%% " ++ epp:encoding_to_string(utf8) ++ "\n"
+                                 ++ IoList).
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %% Generate a complete target system
@@ -832,7 +877,7 @@ strip_sys_files(Relocatable, SysFiles, Apps, ExclRegexps) ->
 		case File of
 		    "erts" ->
 			reltool_utils:throw_error("This system is not installed. "
-						  "The directory ~s is missing.",
+						  "The directory ~ts is missing.",
 				    [Erts#app.label]);
 		    _ when File =:= Erts#app.label ->
 			replace_dyn_erl(Relocatable, Spec);
@@ -954,7 +999,7 @@ check_sys(Mandatory, SysFiles) ->
 do_check_sys(Prefix, Specs) ->
     case lookup_spec(Prefix, Specs) of
         [] ->
-            reltool_utils:throw_error("Mandatory system directory ~s "
+            reltool_utils:throw_error("Mandatory system directory ~ts "
 				      "is not included",
                                       [Prefix]);
         _ ->
@@ -967,7 +1012,8 @@ spec_start_file(#sys{boot_rel = BootRelName,
     {value, Erts} = lists:keysearch(erts, #app.name, Apps),
     {value, BootRel} = lists:keysearch(BootRelName, #rel.name, Rels),
     Data = Erts#app.vsn ++ " " ++ BootRel#rel.vsn ++ "\n",
-    {BootRel#rel.vsn, {write_file, "start_erl.data", Data}}.
+    {BootRel#rel.vsn, {write_file, "start_erl.data",
+                       unicode:characters_to_binary(Data)}}.
 
 lookup_spec(Prefix, Specs) ->
     lists:filter(fun(S) -> lists:prefix(Prefix, element(2, S)) end, Specs).
@@ -975,8 +1021,8 @@ lookup_spec(Prefix, Specs) ->
 safe_lookup_spec(Prefix, Specs) ->
     case lookup_spec(Prefix, Specs) of
         [] ->
-	    %% io:format("lookup fail ~s:\n\t~p\n", [Prefix, Specs]),
-            reltool_utils:throw_error("Mandatory system file ~s is "
+	    %% io:format("lookup fail ~ts:\n\t~p\n", [Prefix, Specs]),
+            reltool_utils:throw_error("Mandatory system file ~ts is "
 				      "not included", [Prefix]);
         Match ->
             Match
@@ -1020,7 +1066,7 @@ spec_lib_files(#sys{root_dir = RootDir,
 check_apps([Mandatory | Names], Apps) ->
     case lists:keymember(Mandatory, #app.name, Apps) of
         false ->
-            reltool_utils:throw_error("Mandatory application ~p is "
+            reltool_utils:throw_error("Mandatory application ~w is "
 				      "not included in ~p",
                                       [Mandatory, Apps]);
         true ->
@@ -1111,13 +1157,13 @@ spec_dir(Dir) ->
 		     Base,
 		     [spec_dir(filename:join([Dir, F])) || F <- Files]};
                 error ->
-                    reltool_utils:throw_error("list dir ~s failed", [Dir])
+                    reltool_utils:throw_error("list dir ~ts failed", [Dir])
             end;
         {ok, #file_info{type = regular}} ->
             %% Plain file
             {copy_file, Base};
         _ ->
-            reltool_utils:throw_error("read file info ~s failed", [Dir])
+            reltool_utils:throw_error("read file info ~ts failed", [Dir])
     end.
 
 spec_mod(Mod, DebugInfo) ->
@@ -1149,18 +1195,18 @@ spec_app_file(#app{name = Name,
                                                    Info#app_info.modules)],
             App2 = App#app{info = Info#app_info{modules = ModNames}},
             Contents = gen_app(App2),
-            AppIoList = io_lib:format("%% app generated at ~w ~w\n~p.\n\n",
+            AppIoList = io_lib:format("%% app generated at ~w ~w\n~tp.\n\n",
                                       [date(), time(), Contents]),
-            [{write_file, AppFilename, AppIoList}];
+            [{write_file, AppFilename, to_utf8_bin_with_enc_comment(AppIoList)}];
         all ->
             %% Include all included modules
             %% Generate new file
             ModNames = [M#mod.name || M <- Mods, M#mod.is_included],
             App2 = App#app{info = Info#app_info{modules = ModNames}},
             Contents = gen_app(App2),
-            AppIoList = io_lib:format("%% app generated at ~w ~w\n~p.\n\n",
+            AppIoList = io_lib:format("%% app generated at ~w ~w\n~tp.\n\n",
                                       [date(), time(), Contents]),
-            [{write_file, AppFilename, AppIoList}]
+            [{write_file, AppFilename, to_utf8_bin_with_enc_comment(AppIoList)}]
 
     end.
 
@@ -1251,7 +1297,7 @@ do_eval_spec({archive, Archive, Options, Files},
         {ok, _} ->
             ok;
         {error, Reason} ->
-            reltool_utils:throw_error("create archive ~s failed: ~p",
+            reltool_utils:throw_error("create archive ~ts failed: ~tp",
 				      [ArchiveFile, Reason])
     end;
 do_eval_spec({copy_file, File}, _OrigSourceDir, SourceDir, TargetDir) ->
@@ -1265,12 +1311,12 @@ do_eval_spec({copy_file, File, OldFile},
     SourceFile = filename:join([OrigSourceDir, OldFile]),
     TargetFile = filename:join([TargetDir, File]),
     reltool_utils:copy_file(SourceFile, TargetFile);
-do_eval_spec({write_file, File, IoList},
+do_eval_spec({write_file, File, Bin},
 	     _OrigSourceDir,
 	     _SourceDir,
 	     TargetDir) ->
     TargetFile = filename:join([TargetDir, File]),
-    reltool_utils:write_file(TargetFile, IoList);
+    reltool_utils:write_file(TargetFile, Bin);
 do_eval_spec({strip_beam, File}, _OrigSourceDir, SourceDir, TargetDir) ->
     SourceFile = filename:join([SourceDir, File]),
     TargetFile = filename:join([TargetDir, File]),
@@ -1302,7 +1348,7 @@ cleanup_spec({copy_file, File}, TargetDir) ->
 cleanup_spec({copy_file, NewFile, _OldFile}, TargetDir) ->
     TargetFile = filename:join([TargetDir, NewFile]),
     file:delete(TargetFile);
-cleanup_spec({write_file, File, _IoList}, TargetDir) ->
+cleanup_spec({write_file, File, _}, TargetDir) ->
     TargetFile = filename:join([TargetDir, File]),
     file:delete(TargetFile);
 cleanup_spec({strip_beam, File}, TargetDir) ->
@@ -1372,7 +1418,7 @@ do_filter_spec(Path,
 	       ExclRegexps) ->
     Path2 = opt_join(Path, NewFile),
     match(Path2, InclRegexps, ExclRegexps);
-do_filter_spec(Path, {write_file, File, _IoList}, InclRegexps, ExclRegexps) ->
+do_filter_spec(Path, {write_file, File, _}, InclRegexps, ExclRegexps) ->
     Path2 = opt_join(Path, File),
     match(Path2, InclRegexps, ExclRegexps);
 do_filter_spec(Path, {strip_beam, File}, InclRegexps, ExclRegexps) ->
@@ -1414,20 +1460,19 @@ do_install(RelName, TargetDir) ->
     RelDir = filename:join([TargetDir2, "releases"]),
     DataFile = filename:join([RelDir, "start_erl.data"]),
     Bin = reltool_utils:read_file(DataFile),
-    case string:tokens(binary_to_list(Bin), " \n") of
+    case string:lexemes(unicode:characters_to_list(Bin), " \n") of
         [ErlVsn, RelVsn | _] ->
             ErtsBinDir = filename:join([TargetDir2, "erts-" ++ ErlVsn, "bin"]),
             BinDir = filename:join([TargetDir2, "bin"]),
 	    case os:type() of
 		{win32, _} ->
-		    NativeRootDir = filename:nativename(TargetDir2),
-		    %% NativeBinDir =
-		    %% filename:nativename(filename:join([BinDir, "win32"])),
-		    NativeBinDir = filename:nativename(BinDir),
-		    IniData = ["[erlang]\r\n",
-			       "Bindir=", NativeBinDir, "\r\n",
-			       "Progname=erl\r\n",
-			       "Rootdir=", NativeRootDir, "\r\n"],
+		    NativeRootDir = nativename(TargetDir2),
+		    NativeErtsBinDir = nativename(ErtsBinDir),
+		    IniData0 = ["[erlang]\r\n",
+				"Bindir=", NativeErtsBinDir, "\r\n",
+				"Progname=erl\r\n",
+				"Rootdir=", NativeRootDir, "\r\n"],
+		    IniData = unicode:characters_to_binary(IniData0),
 		    IniFile = filename:join([BinDir, "erl.ini"]),
                     ok = file:write_file(IniFile, IniData);
 		_ ->
@@ -1442,8 +1487,17 @@ do_install(RelName, TargetDir) ->
             ok = release_handler:create_RELEASES(TargetDir2, RelFile),
             ok;
         _ ->
-            reltool_utils:throw_error("~s: Illegal data file syntax", [DataFile])
+            reltool_utils:throw_error("~ts: Illegal data file syntax",[DataFile])
     end.
+
+nativename(Dir) ->
+    escape_backslash(filename:nativename(Dir)).
+escape_backslash([$\\|T]) ->
+    [$\\,$\\|escape_backslash(T)];
+escape_backslash([H|T]) ->
+    [H|escape_backslash(T)];
+escape_backslash([]) ->
+    [].
 
 subst_src_scripts(Scripts, SrcDir, DestDir, Vars, Opts) ->
     Fun = fun(Script) ->
@@ -1459,8 +1513,8 @@ subst_src_script(Script, SrcDir, DestDir, Vars, Opts) ->
 
 subst_file(Src, Dest, Vars, Opts) ->
     Bin = reltool_utils:read_file(Src),
-    Chars = subst(binary_to_list(Bin), Vars),
-    reltool_utils:write_file(Dest, Chars),
+    Chars = subst(unicode:characters_to_list(Bin), Vars),
+    reltool_utils:write_file(Dest, unicode:characters_to_binary(Chars)),
     case lists:member(preserve, Opts) of
         true ->
             FileInfo = reltool_utils:read_file_info(Src),

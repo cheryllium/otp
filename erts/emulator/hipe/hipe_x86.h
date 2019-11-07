@@ -1,18 +1,19 @@
 /*
  * %CopyrightBegin%
  *
- * Copyright Ericsson AB 2003-2011. All Rights Reserved.
+ * Copyright Ericsson AB 2003-2016. All Rights Reserved.
  *
- * The contents of this file are subject to the Erlang Public License,
- * Version 1.1, (the "License"); you may not use this file except in
- * compliance with the License. You should have received a copy of the
- * Erlang Public License along with this software. If not, it can be
- * retrieved online at http://www.erlang.org/.
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
  *
- * Software distributed under the License is distributed on an "AS IS"
- * basis, WITHOUT WARRANTY OF ANY KIND, either express or implied. See
- * the License for the specific language governing rights and limitations
- * under the License.
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  *
  * %CopyrightEnd%
  */
@@ -21,17 +22,28 @@
 #ifndef HIPE_X86_H
 #define HIPE_X86_H
 
-static __inline__ void hipe_flush_icache_word(void *address)
-{
-    /* Do nothing. This works as long as compiled code is
-       executed by a single CPU thread. */
-}
+#ifndef __has_builtin
+# define __has_builtin(x) 0
+#endif
 
 static __inline__ void
 hipe_flush_icache_range(void *address, unsigned int nbytes)
 {
-    /* Do nothing. This works as long as compiled code is
-       executed by a single CPU thread. */
+    void* end = (char*)address + nbytes;
+
+#if ERTS_AT_LEAST_GCC_VSN__(4, 3, 0) || __has_builtin(__builtin___clear_cache)
+    __builtin___clear_cache(address, end);
+#elif defined(__clang__)
+    void __clear_cache(void *start, void *end);
+    __clear_cache(address, end);
+#else
+# warning "Don't know how to flush instruction cache"
+#endif
+}
+
+static __inline__ void hipe_flush_icache_word(void *address)
+{
+    hipe_flush_icache_range(address, sizeof(void*));
 }
 
 /* for stack descriptor hash lookup */
@@ -52,9 +64,5 @@ extern void nbif_inc_stack_0(void);
 #ifndef NO_FPE_SIGNALS
 extern void nbif_handle_fp_exception(void);
 #endif
-
-/* for hipe_bifs_enter_code_2 */
-extern void *hipe_alloc_code(Uint nrbytes, Eterm callees, Eterm *trampolines, Process *p);
-#define HIPE_ALLOC_CODE(n,c,t,p) hipe_alloc_code((n),(c),(t),(p))
 
 #endif /* HIPE_X86_H */
