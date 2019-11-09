@@ -402,7 +402,7 @@ exited_size(Class) ->
     iolist_size(exited(Class)).
 
 exited(error) ->
-    {_, _, X} = erlang:now(),
+    {_, _, X} = erlang:timestamp(),
     case X rem 3 of
         0 -> <<"Oh snap! ">>;
         1 -> <<"Oh no you d'int! ">>;
